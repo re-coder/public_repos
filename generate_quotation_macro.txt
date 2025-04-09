@@ -11,7 +11,7 @@ Sub GenerateQuotation()
 
     ' Open the workbook (change the path if needed)
     Dim wbPath As String
-    wbPath = ThisWorkbook.Path & "\master_macro_quotation.xlsx"
+    wbPath = ThisWorkbook.Path & "\dev(do not edit)\master_quotation_format.xlsx"
     Set wb = Workbooks.Open(wbPath)
     Set ws = wb.Sheets(1)
 
@@ -203,5 +203,7 @@ Sub UpdateSection(ws As Worksheet, sectionHeader As String, dataList As Variant)
         currentRow = currentRow + 1
     Next i
 End Sub
+
+
 
 
