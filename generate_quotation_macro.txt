@@ -1,7 +1,7 @@
 Option Explicit
 
 ' Main macro that reads inputs from quotation_inputs.xlsm and creates Generated Quotation.xlsx
-Sub GenerateQuotationFromInputs()
+Sub GenerateQuotation()
     Dim inputsPath As String
     Dim inputsWB As Workbook, masterWB As Workbook
     Dim genSheet As Worksheet, secSheet As Worksheet
