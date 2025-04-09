@@ -1,0 +1,83 @@
+Sub InstallCloudAutomations()
+    Dim macroDefs As Variant
+    Dim i As Long
+    Dim vbaCode As String
+    Dim url As String
+    Dim http As Object
+    Dim vbProj As Object, vbComp As Object
+    Dim procToRun As String
+    
+    ' Define an array of macro definitions.
+    ' Each element consists of:
+    '   1. Unique Module Name
+    '   2. URL to download the VBA source code
+    '   3. A Boolean flag indicating whether to run this macro after installation
+    '   4. The procedure name to run (if flagged to run after installation)
+    macroDefs = Array( _
+        Array("CloudMacro1BENQuo", "https://raw.githubusercontent.com/re-coder/public_repos/refs/heads/main/generate_quotation_macro.txt", False, ""), _
+        Array("CloudMacro2BENQuoButt", "https://raw.githubusercontent.com/re-coder/public_repos/refs/heads/main/generate_quotation_button.txt", True, "QuotationButton") _
+    )
+    
+    ' Check if access to the VBA project is allowed.
+    If Application.VBE.VBProjects.Count = 0 Then
+        MsgBox "Enable 'Trust access to the VBA project object model' in Macro Settings"
+        Exit Sub
+    End If
+    Set vbProj = ThisWorkbook.VBProject
+    
+    ' Loop through each macro definition to download and inject the code.
+    For i = LBound(macroDefs) To UBound(macroDefs)
+        ' Reset vbComp for each iteration so we don't retain the previous module reference.
+        Set vbComp = Nothing
+        
+        url = macroDefs(i)(1)
+        
+        ' Download the VBA code from the provided URL.
+        Set http = CreateObject("MSXML2.XMLHTTP")
+        http.Open "GET", url, False
+        http.Send
+        
+        If http.Status <> 200 Then
+            MsgBox "Download failed for " & macroDefs(i)(0) & ": " & http.Status
+            GoTo NextMacro
+        End If
+        
+        vbaCode = http.ResponseText
+        
+        ' Try to get the module by its unique name.
+        On Error Resume Next
+        Set vbComp = vbProj.VBComponents(macroDefs(i)(0))
+        On Error GoTo 0
+        
+        ' If it doesn't exist, add a new standard module and rename it.
+        If vbComp Is Nothing Then
+            Set vbComp = vbProj.VBComponents.Add(1) ' Standard module.
+            vbComp.Name = macroDefs(i)(0)
+        End If
+        
+        ' Clear any existing code and add the new code.
+        With vbComp.CodeModule
+            If .CountOfLines > 0 Then .DeleteLines 1, .CountOfLines
+            .AddFromString vbaCode
+        End With
+NextMacro:
+    Next i
+    
+    ' Identify which macro is flagged to run after installation.
+    procToRun = ""
+    For i = LBound(macroDefs) To UBound(macroDefs)
+        If macroDefs(i)(2) = True Then
+            procToRun = macroDefs(i)(3)
+            Exit For
+        End If
+    Next i
+    
+    ' Run the post-installation macro if one is specified.
+    If procToRun <> "" Then
+        Application.Run procToRun
+    End If
+    
+    MsgBox "Software installed & updated successfully!"
+End Sub
+
+
