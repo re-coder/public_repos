@@ -1,209 +1,161 @@
 Option Explicit
 
-' Main procedure: Opens the workbook, updates headers, table entries, sections, and saves the file.
-Sub GenerateQuotation()
-    Dim wb As Workbook
-    Dim ws As Worksheet
-    Dim placeholders As Object, tableEntries As Object
-    Dim f1Data As Variant, f2Data As Variant, f3Data As Variant
-    Dim f4Data As Variant, f5Data As Variant, f6Data As Variant
-    Dim cell As Range
+' Main macro that reads inputs from quotation_inputs.xlsm and creates Generated Quotation.xlsx
+Sub GenerateQuotationFromInputs()
+    Dim inputsPath As String
+    Dim inputsWB As Workbook, masterWB As Workbook
+    Dim genSheet As Worksheet, secSheet As Worksheet
+    Dim placeholders As Object, tableEntries As Object, fSections As Object
+    Dim lastRow As Long, i As Long
+    Dim key As String, rowData As Variant
+    Dim sectionKey As String, dotPos As Long
+    Dim masterWS As Worksheet
 
-    ' Open the workbook (change the path if needed)
-    Dim wbPath As String
-    wbPath = ThisWorkbook.Path & "\dev(do not edit)\master_quotation_format.xlsx"
-    Set wb = Workbooks.Open(wbPath)
-    Set ws = wb.Sheets(1)
-
-    
-    ' --- Update header fields ---
+    ' ============================
+    ' 1. Initialize dictionaries
+    ' ============================
     Set placeholders = CreateObject("Scripting.Dictionary")
-    With placeholders
-        .Add "Ref", "00002"
-        .Add "Date", "04/04/2025"
-        .Add "Project name", "TEMPLATE 123"
-        .Add "Validity", "2 years"
-        .Add "Attn", "Mr/Ms Tan from ABC Company"
-        .Add "Company name", "XYZ Company"
-        .Add "Ben Continental employee name", "Mr Continental"
-        .Add "Client's name", "Mr Tan"
-    End With
-    Call UpdateHeader(ws, placeholders)
-    
-    ' --- Update table entries for Sections A, B, C, D, E and X ---
     Set tableEntries = CreateObject("Scripting.Dictionary")
+    Set fSections = CreateObject("Scripting.Dictionary")
     
-    ' Populate the dictionary with key: array-of-values pairs.
-    tableEntries.Add "A1", Array("A1", "Vinyl Flooring Panels", "Wood Texture, 5mm thick", 120, "$1,800", "For main booth floor")
-    tableEntries.Add "A2", Array("A2", "Raised Platform", "100mm height, carpeted", 1, "$900", "Stage setup")
-    tableEntries.Add "A3", Array("A3", "Modular Wall Panels", "2.5m height", 20, "$4,000", "For booth partition")
-    tableEntries.Add "A4", Array("A4", "Storage Room Build-up", "Lockable with shelving", 1, "$1,200", "")
-    tableEntries.Add "A5", Array("A5", "Info Counter", "Custom MDF & acrylic top", 1, "$500", "")
-    tableEntries.Add "A6", Array("A6", "Lightbox Signage", "3m x 1m, LED backlit", 1, "$750", "")
-    tableEntries.Add "A7", Array("A7", "Fascia Board", "Branding printed", 2, "$300", "")
-    tableEntries.Add "A8", Array("A8", "Ceiling Frame", "4m x 4m Truss", 1, "$2,500", "Hanging structure")
+    ' ============================
+    ' 2. Open quotation_inputs.xlsm
+    ' ============================
+    inputsPath = ThisWorkbook.Path & "\quotation_inputs.xlsm"
+    Set inputsWB = Workbooks.Open(inputsPath)
     
-    tableEntries.Add "B1", Array("B1", "Large Format Printing", "5m x 2.5m full color", 2, "$800", "PVC banner")
-    tableEntries.Add "B2", Array("B2", "Poster Printing", "A1 Size", 6, "$180", "")
-    tableEntries.Add "B3", Array("B3", "Cut Vinyl Lettering", "White, Die-cut", 1, "$250", "")
-    tableEntries.Add "B4", Array("B4", "Floor Stickers", "Anti-slip, branded", 10, "$400", "")
-    
-    tableEntries.Add "C1", Array("C1", "Distribution box", "30A", 2, "$600", "")
-    tableEntries.Add "C2", Array("C2", "Replenishment of materials", "-", 1, "$200", "Extension cables")
-    tableEntries.Add "C3", Array("C3", "LED Spotlights", "50W", 8, "$480", "Mounted on fascia")
-    tableEntries.Add "C4", Array("C4", "13A Power Sockets", "Double Socket", 6, "$300", "")
-    
-    tableEntries.Add "D1", Array("D1", "55” LED Display", "4K Smart, wall mount", 2, "$1,200", "For product demo")
-    tableEntries.Add "D2", Array("D2", "PA Sound System", "2 speakers + mic", 1, "$900", "Small booth coverage")
-    
-    tableEntries.Add "E1", Array("E1", "Meeting Table", "Round, 1.2m", 1, "$150", "")
-    tableEntries.Add "E2", Array("E2", "Chairs", "Black stackable", 6, "$180", "")
-    tableEntries.Add "E3", Array("E3", "Barstools", "Chrome base", 2, "$100", "")
-    tableEntries.Add "E4", Array("E4", "Lounge Sofa", "2-seater", 1, "$250", "")
-    tableEntries.Add "E5", Array("E5", "Reception Desk", "White gloss", 1, "$300", "")
-    tableEntries.Add "E6", Array("E6", "Literature Rack", "5 tier", 1, "$80", "")
-    tableEntries.Add "E7", Array("E7", "Brochure Holder", "Tabletop acrylic", 3, "$90", "")
-    tableEntries.Add "E8", Array("E8", "Display Plinths", "0.5m x 0.5m", 2, "$160", "")
-    tableEntries.Add "E9", Array("E9", "Coffee Table", "Round glass top", 1, "$100", "")
-    tableEntries.Add "E10", Array("E10", "Bar Counter", "2m long, MDF", 1, "$220", "")
-    tableEntries.Add "E11", Array("E11", "Storage Cabinet", "Lockable, 2-door", 1, "$180", "")
-    
-    tableEntries.Add "X1", Array("X1", "Floral arrangements", "Entryway + table", 1, "$300", "")
-    tableEntries.Add "X2", Array("X2", "Contractor Badges", "5 badges", 1, "$75", "")
-    tableEntries.Add "X3", Array("X3", "Parking Passes", "3 days", 1, "$60", "")
-    tableEntries.Add "X4", Array("X4", "Stand Approval", "Application fee", 1, "$200", "")
-    tableEntries.Add "X5", Array("X5", "Main Electrical", "32A single phase", 1, "$500", "")
-    tableEntries.Add "X6", Array("X6", "Build-up Electrical", "Temporary setup", 1, "$150", "")
-    tableEntries.Add "X7", Array("X7", "Internet Connection", "Wired + Wi-Fi", 1, "$250", "")
-    tableEntries.Add "X8", Array("X8", "Rigging Services", "Ceiling banner", 1, "$400", "")
-    
-    Call UpdateTableEntries(ws, tableEntries)
-    
-    ' --- Update Project Management section (Section F) ---
-    f1Data = Array( _
-                Array("Project Manager", 1, "$1,000"), _
-                Array("Technician", 2, "$1,200"), _
-                Array("Electrician", 1, "$600"), _
-                Array("Graphic Installer", 1, "$400") _
-             )
-    Call UpdateSection(ws, "F1. Manpower", f1Data)
-    
-    f2Data = Array(Array("Hotel Stay (5N)", 3, "$1,800"))
-    Call UpdateSection(ws, "F2. Accommodation", f2Data)
-    
-    f3Data = Array(Array("Return Flights", 3, "$1,500"))
-    Call UpdateSection(ws, "F3. Air Ticket", f3Data)
-    
-    f4Data = Array(Array("Transport (Van)", 1, "$400"))
-    Call UpdateSection(ws, "F4. Local Transportation", f4Data)
-    
-    f5Data = Array(Array("Tools & Hardware Kit", 1, "$250"))
-    Call UpdateSection(ws, "F5. Miscellaneous, Tools", f5Data)
-    
-    f6Data = Array(Array("Maintenance + Packing", 1, "$300"))
-    Call UpdateSection(ws, "F6. Preshow Maintenance, Packing", f6Data)
-    
-    ' Update overall sub total cost for Project Management.
-    For Each cell In ws.UsedRange
-        If Not IsError(cell.Value) Then
-            If VarType(cell.Value) = vbString Then
-                If InStr(cell.Value, "Sub Total Cost (USD):") > 0 Then
-                    cell.Value = "Sub Total Cost (USD): $24,390"
-                End If
-            End If
-        End If
-    Next cell
-    
-    ' Save and close the updated workbook.
-    wb.SaveAs "Generated Quotation.xlsx"
-    wb.Close False
-    
-    MsgBox "Workbook updated and saved as 'Generated Quotation.xlsx'.", vbInformation, "Update Quotation"
-End Sub
-
-'------------------------------------------------------
-' UpdateHeader: Scans each cell in the used range and updates
-' any cell that begins with "Key:" matching one of the keys.
-Sub UpdateHeader(ws As Worksheet, placeholders As Object)
-    Dim cell As Range, key As Variant, newVal As String
-    For Each cell In ws.UsedRange
-        If Not IsError(cell.Value) Then
-            If VarType(cell.Value) = vbString Then
-                For Each key In placeholders.Keys
-                    newVal = placeholders(key)
-                    ' Using Like pattern matching to check if cell starts with "key:"
-                    If Trim(cell.Value) Like key & ":*" Then
-                        cell.Value = key & ": " & newVal
-                    End If
-                Next key
-            End If
-        End If
-    Next cell
-End Sub
-
-'------------------------------------------------------
-' UpdateTableEntries: For each row in the used range, checks the first cell
-' and, if it matches one of the keys in tableEntries, updates that row.
-Sub UpdateTableEntries(ws As Worksheet, tableEntries As Object)
-    Dim rowRange As Range, cell As Range, key As Variant, newRow As Variant
-    Dim i As Long
-    For Each rowRange In ws.UsedRange.Rows
-        Set cell = rowRange.Cells(1, 1)
-        If Not IsError(cell.Value) Then
-            If VarType(cell.Value) = vbString Then
-                key = Trim(cell.Value)
-                If tableEntries.Exists(key) Then
-                    newRow = tableEntries(key)
-                    For i = LBound(newRow) To UBound(newRow)
-                        If i + 1 <= rowRange.Columns.Count Then
-                            rowRange.Cells(1, i + 1).Value = newRow(i)
-                        End If
-                    Next i
-                End If
-            End If
-        End If
-    Next rowRange
-End Sub
-
-'------------------------------------------------------
-' FindCell: Searches for the first cell in the used range that contains searchText.
-' Returns a two-element array: {row, column}. Returns {0, 0} if not found.
-Function FindCell(ws As Worksheet, searchText As String) As Variant
-    Dim cell As Range
-    For Each cell In ws.UsedRange
-        If Not IsError(cell.Value) Then
-            If VarType(cell.Value) = vbString Then
-                If InStr(cell.Value, searchText) > 0 Then
-                    FindCell = Array(cell.Row, cell.Column)
-                    Exit Function
-                End If
-            End If
-        End If
-    Next cell
-    FindCell = Array(0, 0)
-End Function
-
-'------------------------------------------------------
-' UpdateSection: Finds the section header cell and writes dataList
-' (an array of arrays) to subsequent rows.
-Sub UpdateSection(ws As Worksheet, sectionHeader As String, dataList As Variant)
-    Dim pos As Variant, startRow As Long, currentRow As Long
-    Dim i As Long, j As Long
-    pos = FindCell(ws, sectionHeader)
-    startRow = pos(0)
-    If startRow = 0 Then
-        Debug.Print "Section '" & sectionHeader & "' not found."
-        Exit Sub
-    End If
-    currentRow = startRow + 1
-    For i = LBound(dataList) To UBound(dataList)
-        For j = LBound(dataList(i)) To UBound(dataList(i))
-            ws.Cells(currentRow, j + 1).Value = dataList(i)(j)
-        Next j
-        currentRow = currentRow + 1
+    ' -------------------------------
+    ' Read General Inputs (Sheet: "General Inputs")
+    ' -------------------------------
+    Set genSheet = inputsWB.Sheets("General Inputs")
+    ' Expecting labels in cells B3:B10 and values in C3:C10.
+    For i = 3 To 10
+         key = Trim(genSheet.Cells(i, "B").Value)
+         key = Replace(key, ":", "")   ' Remove colon (e.g., "Ref:" becomes "Ref")
+         If key <> "" Then
+             placeholders(key) = genSheet.Cells(i, "C").Value
+         End If
     Next i
+    
+    ' -------------------------------
+    ' Read Section Inputs (Sheet: "Section Inputs")
+    ' -------------------------------
+    Set secSheet = inputsWB.Sheets("Section Inputs")
+    ' Assuming data starts at row 2 and columns B through G contain:
+    ' Key | Item Name | Description | Qty | Price | Remarks
+    lastRow = secSheet.Cells(secSheet.Rows.Count, "B").End(xlUp).Row
+    For i = 2 To lastRow
+         key = Trim(secSheet.Cells(i, "B").Value)
+         If key <> "" Then
+             ' Read the row into an array (columns B to G)
+             rowData = Array( _
+                  key, _
+                  secSheet.Cells(i, "C").Value, _
+                  secSheet.Cells(i, "D").Value, _
+                  secSheet.Cells(i, "E").Value, _
+                  secSheet.Cells(i, "F").Value, _
+                  secSheet.Cells(i, "G").Value _
+             )
+             
+             ' If key starts with "F", group into fSections; otherwise, treat as table entry.
+             If Left(key, 1) = "F" Then
+                 ' Expecting keys like "F1.1", "F1.2", etc.—group by the part before the dot.
+                 dotPos = InStr(key, ".")
+                 If dotPos > 0 Then
+                     sectionKey = Left(key, dotPos - 1)  ' e.g., "F1"
+                 Else
+                     sectionKey = key
+                 End If
+                 ' Initialize the array for this F section if needed.
+                 If Not fSections.Exists(sectionKey) Then
+                     fSections.Add sectionKey, Array()
+                 End If
+                 ' Append the current rowData to the appropriate F section group.
+                 fSections(sectionKey) = AppendToArray(fSections(sectionKey), rowData)
+             Else
+                 ' For non-F keys (Sections A, B, C, D, E, X), add to tableEntries.
+                 tableEntries.Add key, rowData
+             End If
+         End If
+    Next i
+    
+    inputsWB.Close False  ' Close the inputs workbook
+    
+    ' ============================
+    ' 3. Open master quotation template
+    ' ============================
+    Dim masterPath As String
+    masterPath = ThisWorkbook.Path & "\dev(do not edit)\master_quotation_format.xlsx"
+    Set masterWB = Workbooks.Open(masterPath)
+    Set masterWS = masterWB.Sheets(1)  ' Assuming the target is the first sheet
+    
+    ' ============================
+    ' 4. Update the master template
+    ' ============================
+    ' Update header placeholders (e.g., Ref, Date, etc.)
+    Call UpdateHeader(masterWS, placeholders)
+    
+    ' Update table entries (Sections A, B, C, D, E, X)
+    Call UpdateTableEntries(masterWS, tableEntries)
+    
+    ' Update Section F entries.
+    ' For each F section group (like "F1", "F2", etc.), map to the proper section header.
+    Dim fKey As Variant, sectionHeader As String
+    For Each fKey In fSections.Keys
+         Select Case fKey
+             Case "F1": sectionHeader = "F1. Manpower"
+             Case "F2": sectionHeader = "F2. Accommodation"
+             Case "F3": sectionHeader = "F3. Air Ticket"
+             Case "F4": sectionHeader = "F4. Local Transportation"
+             Case "F5": sectionHeader = "F5. Miscellaneous, Tools"
+             Case "F6": sectionHeader = "F6. Preshow Maintenance, Packing"
+             Case Else: sectionHeader = fKey  ' Fallback if no mapping is defined
+         End Select
+         Call UpdateSection(masterWS, sectionHeader, fSections(fKey))
+    Next fKey
+    
+    ' (Optional) Update overall sub total cost.
+    Dim cell As Range
+    For Each cell In masterWS.UsedRange
+         If Not IsError(cell.Value) Then
+              If VarType(cell.Value) = vbString Then
+                  If InStr(cell.Value, "Sub Total Cost (USD):") > 0 Then
+                      cell.Value = "Sub Total Cost (USD): $24,390"
+                  End If
+              End If
+         End If
+    Next cell
+    
+    ' ============================
+    ' 5. Save and close the master workbook
+    ' ============================
+    masterWB.SaveAs ThisWorkbook.Path & "\Generated Quotation.xlsx"
+    masterWB.Close False
+    
+    MsgBox "Generated Quotation.xlsx created successfully!", vbInformation, "Quotation Generation"
 End Sub
 
+' -----------------------------------------------------------
+' Helper function: Appends a new element to an existing array.
+' -----------------------------------------------------------
+Function AppendToArray(oldArray As Variant, newValue As Variant) As Variant
+    Dim newArray() As Variant
+    Dim i As Long, n As Long
 
+    On Error Resume Next
+    n = UBound(oldArray)
+    On Error GoTo 0
 
-
+    ' If array is empty, create a single-element array.
+    If n < 0 Then
+        ReDim newArray(0 To 0)
+        newArray(0) = newValue
+    Else
+        ReDim newArray(0 To n + 1)
+        For i = 0 To n
+            newArray(i) = oldArray(i)
+        Next i
+        newArray(n + 1) = newValue
+    End If
+    AppendToArray = newArray
+End Function
