@@ -1,207 +1,156 @@
-Option Explicit
+Sub GenerateInvoice()
+    ' Define Word constants for use with late-binding.
+    Const wdFormatDocumentDefault As Long = 16
+    Const wdFindContinue As Long = 1
+    Const wdReplaceAll As Long = 2
+    Const wdExportFormatPDF As Long = 17  ' New constant for PDF export
 
-' Main procedure: Opens the workbook, updates headers, table entries, sections, and saves the file.
-Sub GenerateQuotation()
-    Dim wb As Workbook
-    Dim ws As Worksheet
-    Dim placeholders As Object, tableEntries As Object
-    Dim f1Data As Variant, f2Data As Variant, f3Data As Variant
-    Dim f4Data As Variant, f5Data As Variant, f6Data As Variant
-    Dim cell As Range
+    On Error GoTo ErrorHandler
 
-    ' Open the workbook (change the path if needed)
-    Dim wbPath As String
-    wbPath = ThisWorkbook.Path & "\master_macro_quotation.xlsx"
-    Set wb = Workbooks.Open(wbPath)
-    Set ws = wb.Sheets(1)
-
-    
-    ' --- Update header fields ---
-    Set placeholders = CreateObject("Scripting.Dictionary")
-    With placeholders
-        .Add "Ref", "00002"
-        .Add "Date", "04/04/2025"
-        .Add "Project name", "TEMPLATE 123"
-        .Add "Validity", "2 years"
-        .Add "Attn", "Mr/Ms Tan from ABC Company"
-        .Add "Company name", "XYZ Company"
-        .Add "Ben Continental employee name", "Mr Continental"
-        .Add "Client's name", "Mr Tan"
-    End With
-    Call UpdateHeader(ws, placeholders)
-    
-    ' --- Update table entries for Sections A, B, C, D, E and X ---
-    Set tableEntries = CreateObject("Scripting.Dictionary")
-    
-    ' Populate the dictionary with key: array-of-values pairs.
-    tableEntries.Add "A1", Array("A1", "Vinyl Flooring Panels", "Wood Texture, 5mm thick", 120, "$1,800", "For main booth floor")
-    tableEntries.Add "A2", Array("A2", "Raised Platform", "100mm height, carpeted", 1, "$900", "Stage setup")
-    tableEntries.Add "A3", Array("A3", "Modular Wall Panels", "2.5m height", 20, "$4,000", "For booth partition")
-    tableEntries.Add "A4", Array("A4", "Storage Room Build-up", "Lockable with shelving", 1, "$1,200", "")
-    tableEntries.Add "A5", Array("A5", "Info Counter", "Custom MDF & acrylic top", 1, "$500", "")
-    tableEntries.Add "A6", Array("A6", "Lightbox Signage", "3m x 1m, LED backlit", 1, "$750", "")
-    tableEntries.Add "A7", Array("A7", "Fascia Board", "Branding printed", 2, "$300", "")
-    tableEntries.Add "A8", Array("A8", "Ceiling Frame", "4m x 4m Truss", 1, "$2,500", "Hanging structure")
-    
-    tableEntries.Add "B1", Array("B1", "Large Format Printing", "5m x 2.5m full color", 2, "$800", "PVC banner")
-    tableEntries.Add "B2", Array("B2", "Poster Printing", "A1 Size", 6, "$180", "")
-    tableEntries.Add "B3", Array("B3", "Cut Vinyl Lettering", "White, Die-cut", 1, "$250", "")
-    tableEntries.Add "B4", Array("B4", "Floor Stickers", "Anti-slip, branded", 10, "$400", "")
-    
-    tableEntries.Add "C1", Array("C1", "Distribution box", "30A", 2, "$600", "")
-    tableEntries.Add "C2", Array("C2", "Replenishment of materials", "-", 1, "$200", "Extension cables")
-    tableEntries.Add "C3", Array("C3", "LED Spotlights", "50W", 8, "$480", "Mounted on fascia")
-    tableEntries.Add "C4", Array("C4", "13A Power Sockets", "Double Socket", 6, "$300", "")
-    
-    tableEntries.Add "D1", Array("D1", "55” LED Display", "4K Smart, wall mount", 2, "$1,200", "For product demo")
-    tableEntries.Add "D2", Array("D2", "PA Sound System", "2 speakers + mic", 1, "$900", "Small booth coverage")
-    
-    tableEntries.Add "E1", Array("E1", "Meeting Table", "Round, 1.2m", 1, "$150", "")
-    tableEntries.Add "E2", Array("E2", "Chairs", "Black stackable", 6, "$180", "")
-    tableEntries.Add "E3", Array("E3", "Barstools", "Chrome base", 2, "$100", "")
-    tableEntries.Add "E4", Array("E4", "Lounge Sofa", "2-seater", 1, "$250", "")
-    tableEntries.Add "E5", Array("E5", "Reception Desk", "White gloss", 1, "$300", "")
-    tableEntries.Add "E6", Array("E6", "Literature Rack", "5 tier", 1, "$80", "")
-    tableEntries.Add "E7", Array("E7", "Brochure Holder", "Tabletop acrylic", 3, "$90", "")
-    tableEntries.Add "E8", Array("E8", "Display Plinths", "0.5m x 0.5m", 2, "$160", "")
-    tableEntries.Add "E9", Array("E9", "Coffee Table", "Round glass top", 1, "$100", "")
-    tableEntries.Add "E10", Array("E10", "Bar Counter", "2m long, MDF", 1, "$220", "")
-    tableEntries.Add "E11", Array("E11", "Storage Cabinet", "Lockable, 2-door", 1, "$180", "")
-    
-    tableEntries.Add "X1", Array("X1", "Floral arrangements", "Entryway + table", 1, "$300", "")
-    tableEntries.Add "X2", Array("X2", "Contractor Badges", "5 badges", 1, "$75", "")
-    tableEntries.Add "X3", Array("X3", "Parking Passes", "3 days", 1, "$60", "")
-    tableEntries.Add "X4", Array("X4", "Stand Approval", "Application fee", 1, "$200", "")
-    tableEntries.Add "X5", Array("X5", "Main Electrical", "32A single phase", 1, "$500", "")
-    tableEntries.Add "X6", Array("X6", "Build-up Electrical", "Temporary setup", 1, "$150", "")
-    tableEntries.Add "X7", Array("X7", "Internet Connection", "Wired + Wi-Fi", 1, "$250", "")
-    tableEntries.Add "X8", Array("X8", "Rigging Services", "Ceiling banner", 1, "$400", "")
-    
-    Call UpdateTableEntries(ws, tableEntries)
-    
-    ' --- Update Project Management section (Section F) ---
-    f1Data = Array( _
-                Array("Project Manager", 1, "$1,000"), _
-                Array("Technician", 2, "$1,200"), _
-                Array("Electrician", 1, "$600"), _
-                Array("Graphic Installer", 1, "$400") _
-             )
-    Call UpdateSection(ws, "F1. Manpower", f1Data)
-    
-    f2Data = Array(Array("Hotel Stay (5N)", 3, "$1,800"))
-    Call UpdateSection(ws, "F2. Accommodation", f2Data)
-    
-    f3Data = Array(Array("Return Flights", 3, "$1,500"))
-    Call UpdateSection(ws, "F3. Air Ticket", f3Data)
-    
-    f4Data = Array(Array("Transport (Van)", 1, "$400"))
-    Call UpdateSection(ws, "F4. Local Transportation", f4Data)
-    
-    f5Data = Array(Array("Tools & Hardware Kit", 1, "$250"))
-    Call UpdateSection(ws, "F5. Miscellaneous, Tools", f5Data)
-    
-    f6Data = Array(Array("Maintenance + Packing", 1, "$300"))
-    Call UpdateSection(ws, "F6. Preshow Maintenance, Packing", f6Data)
-    
-    ' Update overall sub total cost for Project Management.
-    For Each cell In ws.UsedRange
-        If Not IsError(cell.Value) Then
-            If VarType(cell.Value) = vbString Then
-                If InStr(cell.Value, "Sub Total Cost (USD):") > 0 Then
-                    cell.Value = "Sub Total Cost (USD): $24,390"
-                End If
-            End If
-        End If
-    Next cell
-    
-    ' Save and close the updated workbook.
-    wb.SaveAs "Generated Quotation.xlsx"
-    wb.Close False
-    
-    MsgBox "Workbook updated and saved as 'Generated Quotation.xlsx'.", vbInformation, "Update Quotation"
-End Sub
-
-'------------------------------------------------------
-' UpdateHeader: Scans each cell in the used range and updates
-' any cell that begins with "Key:" matching one of the keys.
-Sub UpdateHeader(ws As Worksheet, placeholders As Object)
-    Dim cell As Range, key As Variant, newVal As String
-    For Each cell In ws.UsedRange
-        If Not IsError(cell.Value) Then
-            If VarType(cell.Value) = vbString Then
-                For Each key In placeholders.Keys
-                    newVal = placeholders(key)
-                    ' Using Like pattern matching to check if cell starts with "key:"
-                    If Trim(cell.Value) Like key & ":*" Then
-                        cell.Value = key & ": " & newVal
-                    End If
-                Next key
-            End If
-        End If
-    Next cell
-End Sub
-
-'------------------------------------------------------
-' UpdateTableEntries: For each row in the used range, checks the first cell
-' and, if it matches one of the keys in tableEntries, updates that row.
-Sub UpdateTableEntries(ws As Worksheet, tableEntries As Object)
-    Dim rowRange As Range, cell As Range, key As Variant, newRow As Variant
+    Dim wdApp As Object         ' Word.Application
+    Dim wdDoc As Object         ' Word.Document (template)
+    Dim newDoc As Object        ' Word.Document (copy to edit)
+    Dim xlBook As Workbook
+    Dim xlSheet As Worksheet
+    Dim filePath As String      ' Path to invoice_inputs.xlsx
+    Dim savePath As String      ' Path to save the new Word document
+    Dim pdfPath As String       ' Path to save the PDF version
+    Dim templatePath As String  ' Path to the Word template master_invoice.docx
+    Dim lastRow As Long
     Dim i As Long
-    For Each rowRange In ws.UsedRange.Rows
-        Set cell = rowRange.Cells(1, 1)
-        If Not IsError(cell.Value) Then
-            If VarType(cell.Value) = vbString Then
-                key = Trim(cell.Value)
-                If tableEntries.Exists(key) Then
-                    newRow = tableEntries(key)
-                    For i = LBound(newRow) To UBound(newRow)
-                        If i + 1 <= rowRange.Columns.Count Then
-                            rowRange.Cells(1, i + 1).Value = newRow(i)
-                        End If
-                    Next i
-                End If
-            End If
-        End If
-    Next rowRange
-End Sub
+    Dim searchText As String
+    Dim replaceText As String
 
-'------------------------------------------------------
-' FindCell: Searches for the first cell in the used range that contains searchText.
-' Returns a two-element array: {row, column}. Returns {0, 0} if not found.
-Function FindCell(ws As Worksheet, searchText As String) As Variant
-    Dim cell As Range
-    For Each cell In ws.UsedRange
-        If Not IsError(cell.Value) Then
-            If VarType(cell.Value) = vbString Then
-                If InStr(cell.Value, searchText) > 0 Then
-                    FindCell = Array(cell.Row, cell.Column)
-                    Exit Function
-                End If
-            End If
-        End If
-    Next cell
-    FindCell = Array(0, 0)
-End Function
+    Const PLACEHOLDER_COL As String = "D"
+    Const VALUE_COL As String = "C"
+    Const SHEET_NAME As String = "Inputs"
 
-'------------------------------------------------------
-' UpdateSection: Finds the section header cell and writes dataList
-' (an array of arrays) to subsequent rows.
-Sub UpdateSection(ws As Worksheet, sectionHeader As String, dataList As Variant)
-    Dim pos As Variant, startRow As Long, currentRow As Long
-    Dim i As Long, j As Long
-    pos = FindCell(ws, sectionHeader)
-    startRow = pos(0)
-    If startRow = 0 Then
-        Debug.Print "Section '" & sectionHeader & "' not found."
+    Debug.Print "?? Starting placeholder replacement process..."
+
+    ' Initialize Word application
+    Set wdApp = CreateObject("Word.Application")
+    wdApp.Visible = True
+    Debug.Print "?? Word application started."
+
+    ' Build the path to the template document (in subfolder "dev" of the Excel file's folder)
+    templatePath = ThisWorkbook.Path & "\dev(do not edit)\master_invoice.docx"
+
+    ' Check that the master template exists
+    If Dir(templatePath) = "" Then
+        MsgBox "Template file not found at: " & templatePath, vbExclamation
+        Debug.Print "?? Template file missing: " & templatePath
         Exit Sub
     End If
-    currentRow = startRow + 1
-    For i = LBound(dataList) To UBound(dataList)
-        For j = LBound(dataList(i)) To UBound(dataList(i))
-            ws.Cells(currentRow, j + 1).Value = dataList(i)(j)
-        Next j
-        currentRow = currentRow + 1
+    Debug.Print "?? Template file found: " & templatePath
+
+    ' Open the master invoice template
+    Set wdDoc = wdApp.Documents.Open(templatePath)
+    Debug.Print "?? Master invoice template opened."
+
+    ' Define the save path for the new invoice document (in the same folder as the Excel file)
+    savePath = ThisWorkbook.Path & "\Generated Invoice.docx"
+    
+    ' Define the PDF save path
+    pdfPath = ThisWorkbook.Path & "\Generated Invoice.pdf"
+
+    ' Create a copy of the template to work with.
+    wdDoc.SaveAs2 Filename:=savePath, FileFormat:=wdFormatDocumentDefault
+    Debug.Print "?? Document saved as: " & savePath
+
+    ' Close the original template document (we now work with the new copy)
+    wdDoc.Close SaveChanges:=False
+    Debug.Print "?? Template document closed."
+
+    ' Open the new copy to perform placeholder replacements
+    Set newDoc = wdApp.Documents.Open(Filename:=savePath)
+    Debug.Print "?? New document opened for editing."
+
+    ' Build the path to the Excel file with replacement inputs (assumed in the same folder as the Excel workbook)
+    filePath = ThisWorkbook.Path & "\invoice_inputs.xlsx"
+
+    ' Check that the Excel inputs file exists
+    If Dir(filePath) = "" Then
+        MsgBox "Excel inputs file not found at: " & filePath, vbExclamation
+        Debug.Print "?? Excel inputs file missing: " & filePath
+        GoTo CleanExit
+    End If
+    Debug.Print "?? Excel inputs file found: " & filePath
+
+    ' Open the invoice inputs workbook as read-only
+    Set xlBook = Workbooks.Open(filePath, ReadOnly:=True)
+    Debug.Print "?? Invoice inputs workbook opened: " & xlBook.Name
+
+    ' Get the relevant worksheet
+    On Error Resume Next
+    Set xlSheet = xlBook.Worksheets(SHEET_NAME)
+    On Error GoTo ErrorHandler
+    If xlSheet Is Nothing Then
+        MsgBox "Worksheet '" & SHEET_NAME & "' not found.", vbCritical
+        Debug.Print "?? Worksheet missing: " & SHEET_NAME
+        GoTo CleanExit
+    End If
+    Debug.Print "?? Worksheet found: " & SHEET_NAME
+
+    ' Determine the last row based on the placeholder column (column D)
+    lastRow = xlSheet.Cells(xlSheet.Rows.Count, PLACEHOLDER_COL).End(xlUp).Row
+    Debug.Print "?? Last row with data: " & lastRow
+
+    ' Loop through each row and replace placeholders in the Word document
+    For i = 3 To lastRow
+        searchText = Trim(xlSheet.Cells(i, PLACEHOLDER_COL).Value)
+        replaceText = xlSheet.Cells(i, VALUE_COL).Value
+
+        ' Convert Excel's line feed (vbLf) to Word's carriage return-line feed (vbCrLf)
+        replaceText = Replace(replaceText, vbLf, vbCrLf)
+        ' Remove tab characters and replace non-breaking spaces with normal spaces
+        replaceText = Replace(replaceText, Chr(9), "")
+        replaceText = Replace(replaceText, ChrW(160), " ")
+        ' Remove extra leading spaces after a new line
+        replaceText = Replace(replaceText, vbCrLf & " ", vbCrLf)
+
+        Debug.Print "?? Row " & i & ": Searching for '" & searchText & "'"
+
+        If Len(searchText) > 0 Then
+            With newDoc.Content.Find
+                .ClearFormatting
+                .Replacement.ClearFormatting
+                .Text = searchText
+                .Replacement.Text = replaceText
+                .Wrap = wdFindContinue
+                .Execute Replace:=wdReplaceAll
+            End With
+            Debug.Print "?? Replaced with: '" & replaceText & "'"
+        Else
+            Debug.Print "?? Skipped empty placeholder in row " & i
+        End If
     Next i
+
+    newDoc.Save
+    Debug.Print "?? Generated document saved."
+
+    ' --- New functionality: Export the generated invoice as a PDF
+    newDoc.ExportAsFixedFormat OutputFileName:=pdfPath, ExportFormat:=wdExportFormatPDF
+    Debug.Print "?? PDF generated: " & pdfPath
+
+    MsgBox "Invoice generated and saved as:" & vbCrLf & _
+           "Word: 'Generated Invoice.docx'" & vbCrLf & "PDF: 'Generated Invoice.pdf'", vbInformation
+
+CleanExit:
+    ' Close the invoice inputs workbook without saving changes
+    If Not xlBook Is Nothing Then xlBook.Close False
+    ' Note: Do not quit the Word application so the generated invoice remains open
+    Set xlSheet = Nothing
+    Set xlBook = Nothing
+    Set wdDoc = Nothing
+    Set newDoc = Nothing
+    Set wdApp = Nothing
+    Debug.Print "?? Cleanup completed."
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "An error occurred: " & Err.Description, vbCritical
+    Debug.Print "?? ERROR " & Err.Number & ": " & Err.Description
+    Resume CleanExit
 End Sub
 
 
