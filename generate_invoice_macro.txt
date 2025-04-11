@@ -1,156 +1,370 @@
-Sub GenerateInvoice()
-    ' Define Word constants for use with late-binding.
-    Const wdFormatDocumentDefault As Long = 16
-    Const wdFindContinue As Long = 1
-    Const wdReplaceAll As Long = 2
-    Const wdExportFormatPDF As Long = 17  ' New constant for PDF export
+#If VBA7 Then
+    Private Declare PtrSafe Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" ( _
+        ByVal hwnd As LongPtr, _
+        ByVal lpOperation As String, _
+        ByVal lpFile As String, _
+        ByVal lpParameters As String, _
+        ByVal lpDirectory As String, _
+        ByVal nShowCmd As Long) As LongPtr
+#Else
+    Private Declare Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" ( _
+        ByVal hwnd As Long, _
+        ByVal lpOperation As String, _
+        ByVal lpFile As String, _
+        ByVal lpParameters As String, _
+        ByVal lpDirectory As String, _
+        ByVal nShowCmd As Long) As Long
+#End If
 
-    On Error GoTo ErrorHandler
 
-    Dim wdApp As Object         ' Word.Application
-    Dim wdDoc As Object         ' Word.Document (template)
-    Dim newDoc As Object        ' Word.Document (copy to edit)
-    Dim xlBook As Workbook
-    Dim xlSheet As Worksheet
-    Dim filePath As String      ' Path to invoice_inputs.xlsx
-    Dim savePath As String      ' Path to save the new Word document
-    Dim pdfPath As String       ' Path to save the PDF version
-    Dim templatePath As String  ' Path to the Word template master_invoice.docx
-    Dim lastRow As Long
-    Dim i As Long
-    Dim searchText As String
-    Dim replaceText As String
+Option Explicit
 
-    Const PLACEHOLDER_COL As String = "D"
-    Const VALUE_COL As String = "C"
-    Const SHEET_NAME As String = "Inputs"
+'==============================================
+' Main procedure: Reads inputs and generates the quotation.
+'==============================================
+Sub GenerateQuotation()
+    Dim inputsPath As String
+    Dim inputsWB As Workbook, masterWB As Workbook
+    Dim genSheet As Worksheet, secSheet As Worksheet
+    Dim placeholders As Object
+    Dim fSections As Object        ' For F items (keys starting with "F")
+    Dim aSections As Object        ' For A items (keys starting with "A")
+    Dim otherSections As Object    ' For keys starting with B, C, D, or E
+    Dim lastRowGeneral As Long, lastRow As Long, i As Long
+    Dim key As String, rowData As Variant
+    Dim groupID As String
+    Dim masterWS As Worksheet
+    
+    '-------------------------------
+    ' 1. Initialize dictionaries
+    '-------------------------------
+    Set placeholders = CreateObject("Scripting.Dictionary")
+    Set fSections = CreateObject("Scripting.Dictionary")
+    Set aSections = CreateObject("Scripting.Dictionary")
+    Set otherSections = CreateObject("Scripting.Dictionary")
+    
+    '-----------------------------------------------
+    ' 2. Open Quotation_Inputs.xlsx and extract data
+    '-----------------------------------------------
+    inputsPath = ThisWorkbook.Path & "\quotation_inputs.xlsx"
+    Set inputsWB = Workbooks.Open(inputsPath)
+    
+    ' --- Read General Inputs from sheet "General Inputs"
+    '     (reads from row 3 to the last used row in column B)
+    Set genSheet = inputsWB.Sheets("General Inputs")
+    lastRowGeneral = genSheet.Cells(genSheet.Rows.Count, "B").End(xlUp).Row
+    For i = 3 To lastRowGeneral
+         key = Trim(genSheet.Cells(i, "B").Value)
+         key = Replace(key, ":", "")  ' Remove the colon, if present
+         If key <> "" Then
+             ' Check if the identifier is enclosed in double quotes.
+             If Left(key, 1) = """" And Right(key, 1) = """" Then
+                 ' Remove the leading and trailing quotes.
+                 key = Mid(key, 2, Len(key) - 2)
+                 ' Store the value from column C along with a flag (True) indicating direct replacement.
+                 placeholders(key) = Array(genSheet.Cells(i, "C").Value, True)
+             Else
+                 ' Store without the direct-replacement flag.
+                 placeholders(key) = Array(genSheet.Cells(i, "C").Value, False)
+             End If
+         End If
+    Next i
+    
+    ' --- Read Section Inputs from sheet "Section Inputs"
+    ' Expected columns: B = Key, C = Item Name, D = Description, E = Qty, F = Price, G = Remarks
+    Set secSheet = inputsWB.Sheets("Section Inputs")
+    lastRow = secSheet.Cells(secSheet.Rows.Count, "B").End(xlUp).Row
+    For i = 2 To lastRow
+         key = Trim(secSheet.Cells(i, "B").Value)
+         If key <> "" Then
+             ' Load the row's values into an array.
+             rowData = Array( _
+                 key, _
+                 secSheet.Cells(i, "C").Value, _
+                 secSheet.Cells(i, "D").Value, _
+                 secSheet.Cells(i, "E").Value, _
+                 secSheet.Cells(i, "F").Value, _
+                 secSheet.Cells(i, "G").Value _
+             )
+             ' Group keys that start with "F" or "A" by the first two characters.
+             If UCase(Left(key, 1)) = "F" Then
+                 groupID = Left(key, 2)  ' e.g., "F1" from "F1.1"
+                 If Not fSections.Exists(groupID) Then fSections.Add groupID, Array()
+                 fSections(groupID) = AppendToArray(fSections(groupID), rowData)
+             ElseIf UCase(Left(key, 1)) = "A" Then
+                 groupID = Left(key, 2)  ' e.g., "A1" or "A2"
+                 If Not aSections.Exists(groupID) Then aSections.Add groupID, Array()
+                 aSections(groupID) = AppendToArray(aSections(groupID), rowData)
+             ElseIf InStr("BCDE", UCase(Left(key, 1))) > 0 Then
+                 groupID = UCase(Left(key, 1))
+                 If Not otherSections.Exists(groupID) Then otherSections.Add groupID, Array()
+                 otherSections(groupID) = AppendToArray(otherSections(groupID), rowData)
+             End If
+         End If
+    Next i
+    ' deb
+    Dim k As Variant
+        For Each k In placeholders.Keys
+            Debug.Print "Placeholder key: " & k & "  Value: " & placeholders(k)(0)
+        Next k
 
-    Debug.Print "?? Starting placeholder replacement process..."
+    
+    inputsWB.Close False  ' Close the inputs file
+    
+    '-----------------------------------------------
+    ' 3. Open the master quotation template.
+    '-----------------------------------------------
+    Dim masterPath As String
+    masterPath = ThisWorkbook.Path & "\dev(do not edit)\master_quotation_format.xlsx"
+    Set masterWB = Workbooks.Open(masterPath)
+    Set masterWS = masterWB.Sheets(1)  ' Adjust if needed
+    
+    '-----------------------------------------------
+    ' 4. Update the master template with extracted inputs.
+    '-----------------------------------------------
+    
+    ' 4a. Update header placeholders.
+    Call UpdateHeader(masterWS, placeholders)
+    
+    ' 4a.1. Insert photo if specified in General Inputs.
+    ' This now expects the photo file name (e.g., "myphoto.jpg") located in a subfolder named "photos".
+    If placeholders.Exists("<<Photo>>") Then
+         Dim photoName As String, photoPath As String
+         photoName = placeholders("<<Photo>>")(0)
+         photoPath = ThisWorkbook.Path & "\photos\" & photoName
+         If Dir(photoPath) <> "" Then
+              Call InsertPhoto(masterWS, "<<Photo>>", photoPath)
+         Else
+              MsgBox "Photo file not found: " & photoPath
+         End If
+    End If
+    
+    ' 4b. Update F sections.
+    Dim fKey As Variant, sectionHeader As String
+    For Each fKey In fSections.Keys
+         Select Case UCase(fKey)
+             Case "F1": sectionHeader = "F1 Manpower"
+             Case "F2": sectionHeader = "F2 Accommodation"
+             Case "F3": sectionHeader = "F3 Air Ticket"
+             Case "F4": sectionHeader = "F4 Local Transportation"
+             Case "F5": sectionHeader = "F5 Miscellaneous, tools, hardware, accessories"
+             Case "F6": sectionHeader = "F6 Preshow maintenance, packing"
+             Case Else: sectionHeader = fKey
+         End Select
+         Call UpdateSection(masterWS, sectionHeader, fSections(fKey))
+    Next fKey
+    
+    ' 4c. Update A sections.
+    Dim aKey As Variant
+    For Each aKey In aSections.Keys
+         Select Case UCase(aKey)
+             Case "A1": sectionHeader = "A1 Flooring"
+             Case "A2": sectionHeader = "A2 Structure"
+             Case Else: sectionHeader = aKey
+         End Select
+         Call UpdateSection(masterWS, sectionHeader, aSections(aKey))
+    Next aKey
+    
+    ' 4d. Update other sections (B, C, D, E).
+    Dim oKey As Variant
+    For Each oKey In otherSections.Keys
+         Select Case oKey
+             Case "B": sectionHeader = "B. Graphics Materials & Printing"
+             Case "C": sectionHeader = "C. Electrical Fittings"
+             Case "D": sectionHeader = "D. AV Equipment"
+             Case "E": sectionHeader = "E. Furniture"
+             Case Else: sectionHeader = oKey
+         End Select
+         Call UpdateSection(masterWS, sectionHeader, otherSections(oKey))
+    Next oKey
+    
+    ' 4e. (Optional) Update overall sub total cost if present.
+    Dim cell As Range
+    For Each cell In masterWS.UsedRange
+         If Not IsError(cell.Value) Then
+              If VarType(cell.Value) = vbString Then
+                  If InStr(cell.Value, "Sub Total Cost (USD):") > 0 Then
+                      cell.Value = "Sub Total Cost (USD): $24,390"
+                  End If
+              End If
+         End If
+    Next cell
+    
+      ' Save the updated master workbook
+    masterWB.SaveAs ThisWorkbook.Path & "\Generated Quotation.xlsx"
+    
+    ' Export the master sheet as a PDF
+    masterWB.ExportAsFixedFormat Type:=xlTypePDF, Filename:=ThisWorkbook.Path & "\Generated Quotation.pdf"
+    
+    ' Automatically open the generated PDF based on operating system:
+    Dim pdfPath As String
+    pdfPath = ThisWorkbook.Path & IIf(InStr(1, Application.OperatingSystem, "Mac", vbTextCompare) > 0, "/Generated Quotation.pdf", "\Generated Quotation.pdf")
+    
+    If InStr(1, Application.OperatingSystem, "Mac", vbTextCompare) > 0 Then
+        ' On Mac, use AppleScript (MacScript) to open the PDF with Finder.
+        Dim script As String
+        script = "tell application ""Finder"" to open POSIX file """ & pdfPath & """"
+        MacScript script
+    Else
+        ' On Windows, use ShellExecute.
+        ShellExecute 0, "open", pdfPath, vbNullString, vbNullString, 1
+    End If
 
-    ' Initialize Word application
-    Set wdApp = CreateObject("Word.Application")
-    wdApp.Visible = True
-    Debug.Print "?? Word application started."
+    masterWB.Close False
+    
+    MsgBox "Generated Quotation.xlsx and Generated Quotation.pdf created successfully!", vbInformation, "Quotation Generation"
+  
+   
+   End Sub
 
-    ' Build the path to the template document (in subfolder "dev" of the Excel file's folder)
-    templatePath = ThisWorkbook.Path & "\dev(do not edit)\master_invoice.docx"
+'==============================================
+' Helper function: Appends a new element to an existing array.
+'==============================================
+Function AppendToArray(oldArray As Variant, newValue As Variant) As Variant
+    Dim newArray() As Variant
+    Dim i As Long, n As Long
+    
+    On Error Resume Next
+    n = UBound(oldArray)
+    On Error GoTo 0
+    
+    If n < 0 Then
+        ReDim newArray(0 To 0)
+        newArray(0) = newValue
+    Else
+        ReDim newArray(0 To n + 1)
+        For i = 0 To n
+            newArray(i) = oldArray(i)
+        Next i
+        newArray(n + 1) = newValue
+    End If
+    AppendToArray = newArray
+End Function
 
-    ' Check that the master template exists
-    If Dir(templatePath) = "" Then
-        MsgBox "Template file not found at: " & templatePath, vbExclamation
-        Debug.Print "?? Template file missing: " & templatePath
+'==============================================
+' UpdateHeader: Scans the worksheet and updates any cell that starts with a key.
+' If the key (from General Inputs) was flagged for direct replacement, then the cell’s value is replaced entirely with the input value.
+' Otherwise, it updates the cell in the "key: value" format.
+'==============================================
+Sub UpdateHeader(ws As Worksheet, placeholders As Object)
+    Dim cell As Range, key As Variant, newVal As String, directReplace As Boolean
+    For Each cell In ws.UsedRange
+         If Not IsError(cell.Value) Then
+             If VarType(cell.Value) = vbString Then
+                 For Each key In placeholders.Keys
+                     newVal = placeholders(key)(0)
+                     directReplace = placeholders(key)(1)
+                     If directReplace Then
+                         ' If the key appears anywhere in the cell, replace the entire cell content with newVal.
+                         If InStr(cell.Value, key) > 0 Then
+                             cell.Value = newVal
+                         End If
+                     Else
+                         ' Check if cell value starts with key followed by a colon.
+                         If Trim(cell.Value) Like key & ":*" Then
+                             cell.Value = key & ": " & newVal
+                         End If
+                     End If
+                 Next key
+             End If
+         End If
+    Next cell
+End Sub
+
+'==============================================
+' UpdateSection: Finds the section header cell and writes the data (array of arrays) below that header.
+'==============================================
+Sub UpdateSection(ws As Worksheet, sectionHeader As String, dataList As Variant)
+    Dim pos As Variant, startRow As Long, currentRow As Long
+    Dim i As Long, j As Long
+    pos = FindCell(ws, sectionHeader)
+    startRow = pos(0)
+    If startRow = 0 Then
+         Debug.Print "Section header '" & sectionHeader & "' not found."
+         Exit Sub
+    End If
+    currentRow = startRow + 1
+    For i = LBound(dataList) To UBound(dataList)
+         For j = LBound(dataList(i)) To UBound(dataList(i))
+             ws.Cells(currentRow, j + 1).Value = dataList(i)(j)
+         Next j
+         currentRow = currentRow + 1
+    Next i
+End Sub
+
+'==============================================
+' FindCell: Searches the used range for a cell containing searchText.
+' Returns an array {row, column}; if not found, returns {0,0}.
+'==============================================
+Function FindCell(ws As Worksheet, searchText As String) As Variant
+    Dim cell As Range
+    For Each cell In ws.UsedRange
+         If Not IsError(cell.Value) Then
+             If VarType(cell.Value) = vbString Then
+                 If InStr(cell.Value, searchText) > 0 Then
+                     FindCell = Array(cell.Row, cell.Column)
+                     Exit Function
+                 End If
+             End If
+         End If
+    Next cell
+    FindCell = Array(0, 0)
+End Function
+
+'==============================================
+' InsertPhoto: Inserts a photo from a file path and stretches it to fit
+' the entire target cell (including merged regions). It searches for a cell
+' containing the placeholderKey, clears that cell’s content, and then
+' places & sizes the image to fill the merged area.
+'==============================================
+Sub InsertPhoto(ws As Worksheet, placeholderKey As String, photoPath As String)
+    Dim foundRange As Range
+    Dim targetRange As Range
+    Dim picShape As Shape
+    Dim fullWidth As Double, fullHeight As Double
+    
+    ' 1. Locate the placeholder text in the sheet.
+    Set foundRange = ws.Cells.Find(What:=placeholderKey, LookIn:=xlValues, _
+                                   LookAt:=xlPart, SearchOrder:=xlByRows, SearchDirection:=xlNext)
+    If foundRange Is Nothing Then
+        MsgBox "Cell for placeholder '" & placeholderKey & "' not found in master sheet."
         Exit Sub
     End If
-    Debug.Print "?? Template file found: " & templatePath
-
-    ' Open the master invoice template
-    Set wdDoc = wdApp.Documents.Open(templatePath)
-    Debug.Print "?? Master invoice template opened."
-
-    ' Define the save path for the new invoice document (in the same folder as the Excel file)
-    savePath = ThisWorkbook.Path & "\Generated Invoice.docx"
     
-    ' Define the PDF save path
-    pdfPath = ThisWorkbook.Path & "\Generated Invoice.pdf"
-
-    ' Create a copy of the template to work with.
-    wdDoc.SaveAs2 Filename:=savePath, FileFormat:=wdFormatDocumentDefault
-    Debug.Print "?? Document saved as: " & savePath
-
-    ' Close the original template document (we now work with the new copy)
-    wdDoc.Close SaveChanges:=False
-    Debug.Print "?? Template document closed."
-
-    ' Open the new copy to perform placeholder replacements
-    Set newDoc = wdApp.Documents.Open(Filename:=savePath)
-    Debug.Print "?? New document opened for editing."
-
-    ' Build the path to the Excel file with replacement inputs (assumed in the same folder as the Excel workbook)
-    filePath = ThisWorkbook.Path & "\invoice_inputs.xlsx"
-
-    ' Check that the Excel inputs file exists
-    If Dir(filePath) = "" Then
-        MsgBox "Excel inputs file not found at: " & filePath, vbExclamation
-        Debug.Print "?? Excel inputs file missing: " & filePath
-        GoTo CleanExit
-    End If
-    Debug.Print "?? Excel inputs file found: " & filePath
-
-    ' Open the invoice inputs workbook as read-only
-    Set xlBook = Workbooks.Open(filePath, ReadOnly:=True)
-    Debug.Print "?? Invoice inputs workbook opened: " & xlBook.Name
-
-    ' Get the relevant worksheet
+    ' 2. Work with the merged area (or the single cell if not merged).
+    Set targetRange = foundRange.MergeArea
+    
+    ' (Optional) Clear the placeholder text.
+    targetRange.Value = ""
+    
+    ' 3. Determine the full width & height of that merged area.
+    fullWidth = targetRange.Width
+    fullHeight = targetRange.Height
+    
+    ' 4. Insert the image.
     On Error Resume Next
-    Set xlSheet = xlBook.Worksheets(SHEET_NAME)
-    On Error GoTo ErrorHandler
-    If xlSheet Is Nothing Then
-        MsgBox "Worksheet '" & SHEET_NAME & "' not found.", vbCritical
-        Debug.Print "?? Worksheet missing: " & SHEET_NAME
-        GoTo CleanExit
+    Set picShape = ws.Shapes.AddPicture( _
+                    Filename:=photoPath, _
+                    LinkToFile:=msoFalse, _
+                    SaveWithDocument:=msoTrue, _
+                    Left:=targetRange.Left, _
+                    Top:=targetRange.Top, _
+                    Width:=fullWidth, _
+                    Height:=fullHeight)
+    On Error GoTo 0
+    
+    If picShape Is Nothing Then
+        MsgBox "Unable to insert the photo. Please check the file: " & photoPath
+        Exit Sub
     End If
-    Debug.Print "?? Worksheet found: " & SHEET_NAME
-
-    ' Determine the last row based on the placeholder column (column D)
-    lastRow = xlSheet.Cells(xlSheet.Rows.Count, PLACEHOLDER_COL).End(xlUp).Row
-    Debug.Print "?? Last row with data: " & lastRow
-
-    ' Loop through each row and replace placeholders in the Word document
-    For i = 3 To lastRow
-        searchText = Trim(xlSheet.Cells(i, PLACEHOLDER_COL).Value)
-        replaceText = xlSheet.Cells(i, VALUE_COL).Value
-
-        ' Convert Excel's line feed (vbLf) to Word's carriage return-line feed (vbCrLf)
-        replaceText = Replace(replaceText, vbLf, vbCrLf)
-        ' Remove tab characters and replace non-breaking spaces with normal spaces
-        replaceText = Replace(replaceText, Chr(9), "")
-        replaceText = Replace(replaceText, ChrW(160), " ")
-        ' Remove extra leading spaces after a new line
-        replaceText = Replace(replaceText, vbCrLf & " ", vbCrLf)
-
-        Debug.Print "?? Row " & i & ": Searching for '" & searchText & "'"
-
-        If Len(searchText) > 0 Then
-            With newDoc.Content.Find
-                .ClearFormatting
-                .Replacement.ClearFormatting
-                .Text = searchText
-                .Replacement.Text = replaceText
-                .Wrap = wdFindContinue
-                .Execute Replace:=wdReplaceAll
-            End With
-            Debug.Print "?? Replaced with: '" & replaceText & "'"
-        Else
-            Debug.Print "?? Skipped empty placeholder in row " & i
-        End If
-    Next i
-
-    newDoc.Save
-    Debug.Print "?? Generated document saved."
-
-    ' --- New functionality: Export the generated invoice as a PDF
-    newDoc.ExportAsFixedFormat OutputFileName:=pdfPath, ExportFormat:=wdExportFormatPDF
-    Debug.Print "?? PDF generated: " & pdfPath
-
-    MsgBox "Invoice generated and saved as:" & vbCrLf & _
-           "Word: 'Generated Invoice.docx'" & vbCrLf & "PDF: 'Generated Invoice.pdf'", vbInformation
-
-CleanExit:
-    ' Close the invoice inputs workbook without saving changes
-    If Not xlBook Is Nothing Then xlBook.Close False
-    ' Note: Do not quit the Word application so the generated invoice remains open
-    Set xlSheet = Nothing
-    Set xlBook = Nothing
-    Set wdDoc = Nothing
-    Set newDoc = Nothing
-    Set wdApp = Nothing
-    Debug.Print "?? Cleanup completed."
-    Exit Sub
-
-ErrorHandler:
-    MsgBox "An error occurred: " & Err.Description, vbCritical
-    Debug.Print "?? ERROR " & Err.Number & ": " & Err.Description
-    Resume CleanExit
+    
+    ' 5. Stretch the photo to fill the entire cell and bring it to the front.
+    With picShape
+        ' Allow both width and height to stretch so it fully fills the cell.
+        .LockAspectRatio = msoFalse
+        .Placement = xlMoveAndSize
+        .ZOrder msoBringToFront
+    End With
 End Sub
 
 
