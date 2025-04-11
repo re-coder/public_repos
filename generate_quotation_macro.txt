@@ -55,7 +55,6 @@ Sub GenerateQuotation()
     ' Expected columns: B = Key, C = Item Name, D = Description, E = Qty, F = Price, G = Remarks
     Set secSheet = inputsWB.Sheets("Section Inputs")
     lastRow = secSheet.Cells(secSheet.Rows.Count, "B").End(xlUp).Row
-    
     For i = 2 To lastRow
          key = Trim(secSheet.Cells(i, "B").Value)
          If key <> "" Then
@@ -84,6 +83,12 @@ Sub GenerateQuotation()
              End If
          End If
     Next i
+    ' deb
+    Dim k As Variant
+        For Each k In placeholders.Keys
+            Debug.Print "Placeholder key: " & k & "  Value: " & placeholders(k)(0)
+        Next k
+
     
     inputsWB.Close False  ' Close the inputs file
     
@@ -101,6 +106,19 @@ Sub GenerateQuotation()
     
     ' 4a. Update header placeholders.
     Call UpdateHeader(masterWS, placeholders)
+    
+    ' 4a.1. Insert photo if specified in General Inputs.
+    ' This now expects the photo file name (e.g., "myphoto.jpg") located in a subfolder named "photos".
+    If placeholders.Exists("<<Photo>>") Then
+         Dim photoName As String, photoPath As String
+         photoName = placeholders("<<Photo>>")(0)
+         photoPath = ThisWorkbook.Path & "\photos\" & photoName
+         If Dir(photoPath) <> "" Then
+              Call InsertPhoto(masterWS, "<<Photo>>", photoPath)
+         Else
+              MsgBox "Photo file not found: " & photoPath
+         End If
+    End If
     
     ' 4b. Update F sections.
     Dim fKey As Variant, sectionHeader As String
@@ -153,14 +171,19 @@ Sub GenerateQuotation()
          End If
     Next cell
     
-    '-----------------------------------------------
-    ' 5. Save and close the updated master as "Generated Quotation.xlsx"
-    '-----------------------------------------------
+       ' Save the updated master workbook
     masterWB.SaveAs ThisWorkbook.Path & "\Generated Quotation.xlsx"
+    
+    ' Export the master sheet as a PDF
+    masterWB.ExportAsFixedFormat Type:=xlTypePDF, Filename:=ThisWorkbook.Path & "\Generated Quotation.pdf"
+    
+  
     masterWB.Close False
     
-    MsgBox "Generated Quotation.xlsx created successfully!", vbInformation, "Quotation Generation"
-End Sub
+    MsgBox "Generated Quotation.xlsx and Generated Quotation.pdf created successfully!", vbInformation, "Quotation Generation"
+     
+   
+   End Sub
 
 '==============================================
 ' Helper function: Appends a new element to an existing array.
@@ -255,5 +278,61 @@ Function FindCell(ws As Worksheet, searchText As String) As Variant
     Next cell
     FindCell = Array(0, 0)
 End Function
+
+'==============================================
+' InsertPhoto: Inserts a photo from a file path and stretches it to fit
+' the entire target cell (including merged regions). It searches for a cell
+' containing the placeholderKey, clears that cell’s content, and then
+' places & sizes the image to fill the merged area.
+'==============================================
+Sub InsertPhoto(ws As Worksheet, placeholderKey As String, photoPath As String)
+    Dim foundRange As Range
+    Dim targetRange As Range
+    Dim picShape As Shape
+    Dim fullWidth As Double, fullHeight As Double
+    
+    ' 1. Locate the placeholder text in the sheet.
+    Set foundRange = ws.Cells.Find(What:=placeholderKey, LookIn:=xlValues, _
+                                   LookAt:=xlPart, SearchOrder:=xlByRows, SearchDirection:=xlNext)
+    If foundRange Is Nothing Then
+        MsgBox "Cell for placeholder '" & placeholderKey & "' not found in master sheet."
+        Exit Sub
+    End If
+    
+    ' 2. Work with the merged area (or the single cell if not merged).
+    Set targetRange = foundRange.MergeArea
+    
+    ' (Optional) Clear the placeholder text.
+    targetRange.Value = ""
+    
+    ' 3. Determine the full width & height of that merged area.
+    fullWidth = targetRange.Width
+    fullHeight = targetRange.Height
+    
+    ' 4. Insert the image.
+    On Error Resume Next
+    Set picShape = ws.Shapes.AddPicture( _
+                    Filename:=photoPath, _
+                    LinkToFile:=msoFalse, _
+                    SaveWithDocument:=msoTrue, _
+                    Left:=targetRange.Left, _
+                    Top:=targetRange.Top, _
+                    Width:=fullWidth, _
+                    Height:=fullHeight)
+    On Error GoTo 0
+    
+    If picShape Is Nothing Then
+        MsgBox "Unable to insert the photo. Please check the file: " & photoPath
+        Exit Sub
+    End If
+    
+    ' 5. Stretch the photo to fill the entire cell and bring it to the front.
+    With picShape
+        ' Allow both width and height to stretch so it fully fills the cell.
+        .LockAspectRatio = msoFalse
+        .Placement = xlMoveAndSize
+        .ZOrder msoBringToFront
+    End With
+End Sub
 
 
