@@ -22,7 +22,14 @@ Option Explicit
 '==============================================
 ' Main procedure: Reads inputs and generates the quotation.
 '==============================================
+
 Sub GenerateQuotation()
+
+    ' Speed up code execution:
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
     Dim inputsPath As String
     Dim inputsWB As Workbook, masterWB As Workbook
     Dim genSheet As Worksheet, secSheet As Worksheet
@@ -212,6 +219,12 @@ Sub GenerateQuotation()
 
     masterWB.Close False
     
+    
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+
+    
     MsgBox "Generated Quotation.xlsx and Generated Quotation.pdf created successfully!", vbInformation, "Quotation Generation"
   
    
@@ -273,24 +286,64 @@ End Sub
 
 '==============================================
 ' UpdateSection: Finds the section header cell and writes the data (array of arrays) below that header.
+'  In your original data array, the Remarks column is the sixth element (index 5). The revised code uses its own column counter so that when the Remarks field is skipped, the remaining values are output sequentially without leaving an empty cell.
 '==============================================
 Sub UpdateSection(ws As Worksheet, sectionHeader As String, dataList As Variant)
     Dim pos As Variant, startRow As Long, currentRow As Long
-    Dim i As Long, j As Long
+    Dim numItems As Long, totalRows As Long
+    Dim i As Long, j As Long, outCol As Long
+    Dim dataIndex As Long
+    
     pos = FindCell(ws, sectionHeader)
     startRow = pos(0)
     If startRow = 0 Then
          Debug.Print "Section header '" & sectionHeader & "' not found."
          Exit Sub
     End If
+
+    ' The output will start immediately after the header.
     currentRow = startRow + 1
-    For i = LBound(dataList) To UBound(dataList)
-         For j = LBound(dataList(i)) To UBound(dataList(i))
-             ws.Cells(currentRow, j + 1).Value = dataList(i)(j)
-         Next j
-         currentRow = currentRow + 1
+    
+    ' Determine the number of items (data rows)
+    numItems = UBound(dataList) - LBound(dataList) + 1
+    ' Force an even number of rows:
+    If numItems Mod 2 = 1 Then
+         totalRows = numItems + 1
+    Else
+         totalRows = numItems
+    End If
+    
+    ' Loop through each row from 1 to totalRows
+    For i = 1 To totalRows
+         ' Set alternating row background color:
+         If i Mod 2 = 1 Then
+              ws.Rows(currentRow + i - 1).Interior.Color = RGB(242, 242, 242) ' #F2F2F2
+         Else
+              ws.Rows(currentRow + i - 1).Interior.Color = RGB(255, 255, 255) ' #FFFFFF
+         End If
+         
+         ' If there is an item for this row, fill it in.
+         ' (Data items are taken from the dataList array; for the extra row, do nothing.)
+         If i <= numItems Then
+              outCol = 1
+              ' dataIndex calculates the proper index inside dataList.
+              dataIndex = LBound(dataList) + i - 1
+              For j = LBound(dataList(dataIndex)) To UBound(dataList(dataIndex))
+                   ' Skip the Remarks column (6th element: index 5)
+                   If j <> 5 Then
+                        ws.Cells(currentRow + i - 1, outCol).Value = dataList(dataIndex)(j)
+                        outCol = outCol + 1
+                   End If
+              Next j
+         Else
+              ' Extra row: leave blank (optionally clear contents).
+              ws.Rows(currentRow + i - 1).ClearContents
+         End If
     Next i
 End Sub
+
+
+
 
 '==============================================
 ' FindCell: Searches the used range for a cell containing searchText.
