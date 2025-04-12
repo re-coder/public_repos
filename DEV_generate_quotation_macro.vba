@@ -306,18 +306,15 @@ End Sub
 Sub UpdateSection(ws As Worksheet, sectionHeader As String, dataList As Variant)
     Dim pos As Variant, startRow As Long
     Dim i As Long, j As Long
-    Dim rawCount As Long, numRows As Long, numCols As Long, colIndex As Long
+    Dim numItems As Long, numCols As Long, colIndex As Long
     Dim outputArr() As Variant
-    Dim rng As Range
-    Dim r As Long
 
-    ' Optimize performance by disabling events, screen updating, and calculation.
-    On Error GoTo CleanUp   ' Ensure restoration in case of error.
+    ' Temporarily disable events, screen updating and recalculation to optimize performance.
     Application.EnableEvents = False
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
 
-    ' Locate the section header cell in the master template.
+    ' Locate the section header cell.
     pos = FindCell(ws, sectionHeader)
     startRow = pos(0)
     If startRow = 0 Then
@@ -325,72 +322,45 @@ Sub UpdateSection(ws As Worksheet, sectionHeader As String, dataList As Variant)
          GoTo CleanUp
     End If
 
-    ' Calculate the raw number of sub items.
-    rawCount = UBound(dataList) - LBound(dataList) + 1
-    ' Ensure an even number of rows: if rawCount is odd, add one extra blank row.
-    If rawCount Mod 2 = 0 Then
-         numRows = rawCount
-    Else
-         numRows = rawCount + 1
-    End If
+    ' Calculate the number of sub items.
+    numItems = UBound(dataList) - LBound(dataList) + 1
+    Debug.Print "Section: " & sectionHeader & " - Items: " & numItems
+    If numItems <= 0 Then GoTo CleanUp
 
-    ' Determine the effective number of columns by inspecting the first sub item's data.
-    ' (Skipping the Remarks column, the 6th element, index 5.)
+    ' Determine the number of columns by checking the first sub item.
     numCols = 0
     For j = LBound(dataList(LBound(dataList))) To UBound(dataList(LBound(dataList)))
          If j <> 5 Then numCols = numCols + 1
     Next j
 
-    ' Insert blank rows below the section header using a bulk insert.
-    ws.Rows(startRow + 1).Resize(numRows).Insert Shift:=xlDown
+    ' Insert blank rows below the section header.
+    ws.Rows(startRow + 1).Resize(numItems).Insert Shift:=xlDown
 
-    ' Build an output array to occupy the inserted rows.
-    ReDim outputArr(1 To numRows, 1 To numCols)
-    
-    ' Fill the output array with the sub item data.
-    ' Only fill for the actual sub items (rawCount rows); if an extra row was added, leave it blank.
+    ' Build an output array for the new rows.
+    ReDim outputArr(1 To numItems, 1 To numCols)
+
+    ' Loop through each sub item and fill the output array.
     For i = LBound(dataList) To UBound(dataList)
          Dim outRow As Long
-         outRow = i - LBound(dataList) + 1   ' Adjust so our array row index starts at 1.
+         outRow = i - LBound(dataList) + 1   ' Adjust the index to start at 1.
          colIndex = 1
          For j = LBound(dataList(i)) To UBound(dataList(i))
-              If j <> 5 Then   ' Skip the Remarks column.
+              If j <> 5 Then ' Skip the Remarks column.
                    outputArr(outRow, colIndex) = dataList(i)(j)
                    colIndex = colIndex + 1
               End If
          Next j
     Next i
 
-    ' Write the output array into the newly inserted rows in one bulk operation.
-    ws.Range(ws.Cells(startRow + 1, 1), ws.Cells(startRow + numRows, numCols)).Value = outputArr
-    
-    ' Ensure that the data is not bolded or underlined.
-    Set rng = ws.Range(ws.Cells(startRow + 1, 1), ws.Cells(startRow + numRows, numCols))
-    With rng.Font
-         .Bold = False
-         .Underline = xlUnderlineStyleNone  ' Remove any underlining.
-         .Italic = False                   ' Clear italic formatting as well if needed.
-    End With
-
-    ' Alternate row background colors.
-    ' The pattern resets for each section: first row gets #F2F2F2, second row gets #FFFFFF, etc.
-    For r = 1 To numRows
-         With ws.Range(ws.Cells(startRow + r, 1), ws.Cells(startRow + r, numCols)).Interior
-              If r Mod 2 = 1 Then
-                   .Color = RGB(242, 242, 242)  ' #F2F2F2
-              Else
-                   .Color = RGB(255, 255, 255)  ' #FFFFFF
-              End If
-         End With
-    Next r
+    ' Write the entire block to the inserted blank rows in one operation.
+    ws.Range(ws.Cells(startRow + 1, 1), ws.Cells(startRow + numItems, numCols)).Value = outputArr
 
 CleanUp:
-    ' Re-enable calculation, screen updating, and events.
+    ' Re-enable events, screen updating, and automatic calculation.
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
     Application.EnableEvents = True
 End Sub
-
 
 
 
