@@ -1,0 +1,394 @@
+#If VBA7 Then
+    Private Declare PtrSafe Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" ( _
+        ByVal hwnd As LongPtr, _
+        ByVal lpOperation As String, _
+        ByVal lpFile As String, _
+        ByVal lpParameters As String, _
+        ByVal lpDirectory As String, _
+        ByVal nShowCmd As Long) As LongPtr
+#Else
+    Private Declare Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" ( _
+        ByVal hwnd As Long, _
+        ByVal lpOperation As String, _
+        ByVal lpFile As String, _
+        ByVal lpParameters As String, _
+        ByVal lpDirectory As String, _
+        ByVal nShowCmd As Long) As Long
+#End If
+
+Option Explicit
+
+'==============================================
+' Main procedure: Reads inputs and generates the quotation.
+'==============================================
+Sub GenerateQuotation()
+    Dim inputsPath As String
+    Dim inputsWB As Workbook, masterWB As Workbook
+    Dim genSheet As Worksheet, secSheet As Worksheet
+    Dim placeholders As Object
+    Dim fSections As Object        ' For keys starting with F (grouped by first two characters)
+    Dim aSections As Object        ' For keys starting with A (grouped by first two characters)
+    Dim otherSections As Object    ' For keys starting with B, C, D, E, G, H, I, J, and for X keys (grouped as needed)
+    Dim lastRowGeneral As Long, lastRow As Long, i As Long
+    Dim key As String, rowData As Variant
+    Dim groupID As String
+    Dim masterWS As Worksheet
+
+    '-------------------------------
+    ' 1. Initialize dictionaries
+    '-------------------------------
+    Set placeholders = CreateObject("Scripting.Dictionary")
+    Set fSections = CreateObject("Scripting.Dictionary")
+    Set aSections = CreateObject("Scripting.Dictionary")
+    Set otherSections = CreateObject("Scripting.Dictionary")
+    
+    '-----------------------------------------------
+    ' 2. Open Quotation_Inputs.xlsx and extract data
+    '-----------------------------------------------
+    inputsPath = ThisWorkbook.Path & "\quotation_inputs.xlsx"
+    Set inputsWB = Workbooks.Open(inputsPath)
+    
+    ' --- Read General Inputs from sheet "General Inputs"
+    '     (reads from row 3 to the last used row in column B)
+    Set genSheet = inputsWB.Sheets("General Inputs")
+    lastRowGeneral = genSheet.Cells(genSheet.Rows.Count, "B").End(xlUp).Row
+    For i = 3 To lastRowGeneral
+         key = Trim(genSheet.Cells(i, "B").Value)
+         key = Replace(key, ":", "")  ' Remove the colon, if present
+         If key <> "" Then
+             ' Check if the identifier is enclosed in double quotes.
+             If Left(key, 1) = """" And Right(key, 1) = """" Then
+                 key = Mid(key, 2, Len(key) - 2)   ' Remove the quotes.
+                 placeholders(key) = Array(genSheet.Cells(i, "C").Value, True)
+             Else
+                 placeholders(key) = Array(genSheet.Cells(i, "C").Value, False)
+             End If
+         End If
+    Next i
+    
+    ' --- Read Section Inputs from sheet "Section Inputs"
+    ' Expected columns: B = Key, C = Item Name, D = Description, E = Qty, F = Price, G = Remarks
+    Set secSheet = inputsWB.Sheets("Section Inputs")
+    lastRow = secSheet.Cells(secSheet.Rows.Count, "B").End(xlUp).Row
+    For i = 2 To lastRow
+         key = Trim(secSheet.Cells(i, "B").Value)
+         If key <> "" Then
+             ' Load the row's values into an array.
+             rowData = Array( _
+                 key, _
+                 secSheet.Cells(i, "C").Value, _
+                 secSheet.Cells(i, "D").Value, _
+                 secSheet.Cells(i, "E").Value, _
+                 secSheet.Cells(i, "F").Value, _
+                 secSheet.Cells(i, "G").Value _
+             )
+             ' Grouping based on the first character:
+             Select Case UCase(Left(key, 1))
+                 Case "F", "A", "X"   ' These groups have sub-identifier (e.g., F1, A1, X1)
+                     groupID = Left(key, 2)
+                     Select Case UCase(Left(key, 1))
+                         Case "F"
+                             If Not fSections.Exists(groupID) Then fSections.Add groupID, Array()
+                             fSections(groupID) = AppendToArray(fSections(groupID), rowData)
+                         Case "A"
+                             If Not aSections.Exists(groupID) Then aSections.Add groupID, Array()
+                             aSections(groupID) = AppendToArray(aSections(groupID), rowData)
+                         Case "X"
+                             ' Payment to Organisers keys
+                             If Not otherSections.Exists(groupID) Then otherSections.Add groupID, Array()
+                             otherSections(groupID) = AppendToArray(otherSections(groupID), rowData)
+                     End Select
+                 Case Else
+                     ' For keys B, C, D, E, G, H, I, J
+                     groupID = UCase(Left(key, 1))
+                     If Not otherSections.Exists(groupID) Then otherSections.Add groupID, Array()
+                     otherSections(groupID) = AppendToArray(otherSections(groupID), rowData)
+             End Select
+         End If
+    Next i
+    ' Debug: List all placeholder keys.
+    Dim k As Variant
+    For Each k In placeholders.Keys
+        Debug.Print "Placeholder key: " & k & "  Value: " & placeholders(k)(0)
+    Next k
+
+    inputsWB.Close False  ' Close the inputs file
+    
+    '-----------------------------------------------
+    ' 3. Open the master quotation template.
+    '-----------------------------------------------
+    Dim masterPath As String
+    masterPath = ThisWorkbook.Path & "\dev(do not edit)\master_quotation_format.xlsx"
+    Set masterWB = Workbooks.Open(masterPath)
+    Set masterWS = masterWB.Sheets(1)  ' Adjust if needed
+    
+    '-----------------------------------------------
+    ' 4. Update the master template with extracted inputs.
+    '-----------------------------------------------
+    
+    ' 4a. Update header placeholders.
+    Call UpdateHeader(masterWS, placeholders)
+    
+    ' 4a.1. Insert photo if specified in General Inputs.
+    ' This expects the photo file name (e.g., "myphoto.jpg") in a subfolder called "photos".
+    If placeholders.Exists("<<Photo>>") Then
+         Dim photoName As String, photoPath As String
+         photoName = placeholders("<<Photo>>")(0)
+         photoPath = ThisWorkbook.Path & "\photos\" & photoName
+         If Dir(photoPath) <> "" Then
+              Call InsertPhoto(masterWS, "<<Photo>>", photoPath)
+         Else
+              MsgBox "Photo file not found: " & photoPath
+         End If
+    End If
+    
+        ' 4b. Update F sections.
+    Dim fKey As Variant, sectionHeader As String
+    For Each fKey In fSections.Keys
+        Select Case UCase(fKey)
+            Case "F1": sectionHeader = "F1. Manpower"
+            Case "F2": sectionHeader = "F2. Accommodation"
+            Case "F3": sectionHeader = "F3. Air Tickets"
+            Case "F4": sectionHeader = "F4. Transportation"
+            Case "F5": sectionHeader = "F5. Miscellaneous, tools, hardware, accessories"
+            Case "F6": sectionHeader = "F6. Admin"
+            Case "F7": sectionHeader = "F7. Photography"
+            Case "F8": sectionHeader = "F8. Professional fee (PE endorsement)"
+            Case "F9": sectionHeader = "F9. Courier and storage charges"
+            Case "F10": sectionHeader = "F10. Preshow maintenance, packing"
+            Case "F11": sectionHeader = "F11. Others"
+            Case Else: sectionHeader = fKey
+        End Select
+        Call UpdateSection(masterWS, sectionHeader, fSections(fKey))
+    Next fKey
+
+    ' 4c. Update A sections.
+    Dim aKey As Variant
+    For Each aKey In aSections.Keys
+        Select Case UCase(aKey)
+            Case "A1": sectionHeader = "A1. Flooring"
+            Case "A2": sectionHeader = "A2. Hanging Banner/Structure"
+            Case "A3": sectionHeader = "A3. System and Basic Structure"
+            Case Else: sectionHeader = aKey
+        End Select
+        Call UpdateSection(masterWS, sectionHeader, aSections(aKey))
+    Next aKey
+
+    ' 4d. Update other sections (B, C, D, E, G, H, I, J, and X keys)
+    Dim oKey As Variant
+    For Each oKey In otherSections.Keys
+         Select Case oKey
+             Case "B": sectionHeader = "B. Graphics Materials & Printing"
+             Case "C": sectionHeader = "C. Electrical Fittings and Lightings"
+             Case "D": sectionHeader = "D. AV and LED"
+             Case "E": sectionHeader = "E. Furniture Supply and Rental"
+             Case "G": sectionHeader = "G. Air Condition Equipment"
+             Case "H": sectionHeader = "H. Plants, Flowers and Arrangement"
+             Case "I": sectionHeader = "I. Miscellaneous, Stationery and Printing"
+             Case "J": sectionHeader = "J. Barista and Refreshments"
+             Case Else
+                  ' For keys starting with X (Payment to Organisers) we expect two-character keys.
+                  If Left(oKey, 1) = "X" Then
+                        Select Case oKey
+                           Case "X1": sectionHeader = "X1. Floral arrangements"
+                           Case "X2": sectionHeader = "X2. Contractor Badges"
+                           Case "X3": sectionHeader = "X3. Parking Passes"
+                           Case "X4": sectionHeader = "X4. Stand Approval"
+                           Case "X5": sectionHeader = "X5. Main Electrical connection"
+                           Case "X6": sectionHeader = "X6. Build-up electrical connection"
+                           Case "X7": sectionHeader = "X7. Internet connection"
+                           Case "X8": sectionHeader = "X8. Rigging Services"
+                           Case "X9": sectionHeader = "X9. Badges"
+                           Case "X10": sectionHeader = "X10. Late charges"
+                           Case "X11": sectionHeader = "X11. Others"
+                           Case Else: sectionHeader = oKey
+                        End Select
+                  Else
+                        sectionHeader = oKey
+                  End If
+         End Select
+         Call UpdateSection(masterWS, sectionHeader, otherSections(oKey))
+    Next oKey
+    
+    ' 4e. (Optional) Update overall sub total cost if present.
+    Dim cell As Range
+    For Each cell In masterWS.UsedRange
+         If Not IsError(cell.Value) Then
+              If VarType(cell.Value) = vbString Then
+                  If InStr(cell.Value, "Sub Total Cost (USD):") > 0 Then
+                      cell.Value = "Sub Total Cost (USD): $24,390"
+                  End If
+              End If
+         End If
+    Next cell
+    
+    ' Save the updated master workbook
+    masterWB.SaveAs ThisWorkbook.Path & "\Generated Quotation.xlsx"
+    
+    ' Export the master sheet as a PDF
+    masterWB.ExportAsFixedFormat Type:=xlTypePDF, Filename:=ThisWorkbook.Path & "\Generated Quotation.pdf"
+    
+    ' Automatically open the generated PDF based on operating system:
+    Dim pdfPath As String
+    pdfPath = ThisWorkbook.Path & IIf(InStr(1, Application.OperatingSystem, "Mac", vbTextCompare) > 0, "/Generated Quotation.pdf", "\Generated Quotation.pdf")
+    
+    If InStr(1, Application.OperatingSystem, "Mac", vbTextCompare) > 0 Then
+        ' On Mac, use AppleScript (MacScript) to open the PDF with Finder.
+        Dim script As String
+        script = "tell application ""Finder"" to open POSIX file """ & pdfPath & """"
+        MacScript script
+    Else
+        ' On Windows, use ShellExecute.
+        ShellExecute 0, "open", pdfPath, vbNullString, vbNullString, 1
+    End If
+
+    masterWB.Close False
+    
+    MsgBox "Generated Quotation.xlsx and Generated Quotation.pdf created successfully!", vbInformation, "Quotation Generation"
+End Sub
+
+'==============================================
+' Helper function: Appends a new element to an existing array.
+'==============================================
+Function AppendToArray(oldArray As Variant, newValue As Variant) As Variant
+    Dim newArray() As Variant
+    Dim i As Long, n As Long
+    
+    On Error Resume Next
+    n = UBound(oldArray)
+    On Error GoTo 0
+    
+    If n < 0 Then
+        ReDim newArray(0 To 0)
+        newArray(0) = newValue
+    Else
+        ReDim newArray(0 To n + 1)
+        For i = 0 To n
+            newArray(i) = oldArray(i)
+        Next i
+        newArray(n + 1) = newValue
+    End If
+    AppendToArray = newArray
+End Function
+
+'==============================================
+' UpdateHeader: Scans the worksheet and updates any cell that starts with a key.
+' If the key (from General Inputs) was flagged for direct replacement, then the cell’s value is replaced entirely with the input value.
+' Otherwise, it updates the cell in the "key: value" format.
+'==============================================
+Sub UpdateHeader(ws As Worksheet, placeholders As Object)
+    Dim cell As Range, key As Variant, newVal As String, directReplace As Boolean
+    For Each cell In ws.UsedRange
+         If Not IsError(cell.Value) Then
+             If VarType(cell.Value) = vbString Then
+                 For Each key In placeholders.Keys
+                     newVal = placeholders(key)(0)
+                     directReplace = placeholders(key)(1)
+                     If directReplace Then
+                         If InStr(cell.Value, key) > 0 Then
+                             cell.Value = newVal
+                         End If
+                     Else
+                         If Trim(cell.Value) Like key & ":*" Then
+                             cell.Value = key & ": " & newVal
+                         End If
+                     End If
+                 Next key
+             End If
+         End If
+    Next cell
+End Sub
+
+'==============================================
+' UpdateSection: Finds the section header cell and writes the data (array of arrays) below that header.
+' (Note: The Remarks column (column 6 in the data array) is not output.)
+'==============================================
+Sub UpdateSection(ws As Worksheet, sectionHeader As String, dataList As Variant)
+    Dim pos As Variant, startRow As Long, currentRow As Long
+    Dim i As Long, j As Long, outCol As Long
+    pos = FindCell(ws, sectionHeader)
+    startRow = pos(0)
+    If startRow = 0 Then
+         Debug.Print "Section header '" & sectionHeader & "' not found."
+         Exit Sub
+    End If
+    currentRow = startRow + 1
+    For i = LBound(dataList) To UBound(dataList)
+         outCol = 1
+         For j = LBound(dataList(i)) To UBound(dataList(i))
+              ' Skip the Remarks column (6th element: index 5)
+              If j <> 5 Then
+                   ws.Cells(currentRow, outCol).Value = dataList(i)(j)
+                   outCol = outCol + 1
+              End If
+         Next j
+         currentRow = currentRow + 1
+    Next i
+End Sub
+
+'==============================================
+' FindCell: Searches the used range for a cell containing searchText.
+' Returns an array {row, column}; if not found, returns {0,0}.
+'==============================================
+Function FindCell(ws As Worksheet, searchText As String) As Variant
+    Dim cell As Range
+    For Each cell In ws.UsedRange
+         If Not IsError(cell.Value) Then
+             If VarType(cell.Value) = vbString Then
+                 If InStr(cell.Value, searchText) > 0 Then
+                     FindCell = Array(cell.Row, cell.Column)
+                     Exit Function
+                 End If
+             End If
+         End If
+    Next cell
+    FindCell = Array(0, 0)
+End Function
+
+'==============================================
+' InsertPhoto: Inserts a photo from a file path and stretches it to fill
+' the entire target cell (including merged regions).
+' It searches for a cell containing the placeholderKey, clears it, and sizes the image accordingly.
+'==============================================
+Sub InsertPhoto(ws As Worksheet, placeholderKey As String, photoPath As String)
+    Dim foundRange As Range
+    Dim targetRange As Range
+    Dim picShape As Shape
+    Dim fullWidth As Double, fullHeight As Double
+    
+    Set foundRange = ws.Cells.Find(What:=placeholderKey, LookIn:=xlValues, _
+                                   LookAt:=xlPart, SearchOrder:=xlByRows, SearchDirection:=xlNext)
+    If foundRange Is Nothing Then
+        MsgBox "Cell for placeholder '" & placeholderKey & "' not found in master sheet."
+        Exit Sub
+    End If
+    
+    Set targetRange = foundRange.MergeArea
+    targetRange.Value = ""
+    fullWidth = targetRange.Width
+    fullHeight = targetRange.Height
+    
+    On Error Resume Next
+    Set picShape = ws.Shapes.AddPicture( _
+                    Filename:=photoPath, _
+                    LinkToFile:=msoFalse, _
+                    SaveWithDocument:=msoTrue, _
+                    Left:=targetRange.Left, _
+                    Top:=targetRange.Top, _
+                    Width:=fullWidth, _
+                    Height:=fullHeight)
+    On Error GoTo 0
+    
+    If picShape Is Nothing Then
+        MsgBox "Unable to insert the photo. Please check the file: " & photoPath
+        Exit Sub
+    End If
+    
+    With picShape
+        .LockAspectRatio = msoFalse
+        .Placement = xlMoveAndSize
+        .ZOrder msoBringToFront
+    End With
+End Sub
+
+
