@@ -304,27 +304,66 @@ End Sub
 ' (Note: The Remarks column (column 6 in the data array) is not output.)
 '==============================================
 Sub UpdateSection(ws As Worksheet, sectionHeader As String, dataList As Variant)
-    Dim pos As Variant, startRow As Long, currentRow As Long
-    Dim i As Long, j As Long, outCol As Long
+    Dim pos As Variant, startRow As Long
+    Dim i As Long, j As Long
+    Dim numItems As Long, numCols As Long, colIndex As Long
+    Dim outputArr() As Variant
+
+    ' Temporarily disable events, screen updating and recalculation to optimize performance.
+    Application.EnableEvents = False
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+
+    ' Locate the section header cell.
     pos = FindCell(ws, sectionHeader)
     startRow = pos(0)
     If startRow = 0 Then
          Debug.Print "Section header '" & sectionHeader & "' not found."
-         Exit Sub
+         GoTo CleanUp
     End If
-    currentRow = startRow + 1
+
+    ' Calculate the number of sub items.
+    numItems = UBound(dataList) - LBound(dataList) + 1
+    Debug.Print "Section: " & sectionHeader & " - Items: " & numItems
+    If numItems <= 0 Then GoTo CleanUp
+
+    ' Determine the number of columns by checking the first sub item.
+    numCols = 0
+    For j = LBound(dataList(LBound(dataList))) To UBound(dataList(LBound(dataList)))
+         If j <> 5 Then numCols = numCols + 1
+    Next j
+
+    ' Insert blank rows below the section header.
+    ws.Rows(startRow + 1).Resize(numItems).Insert Shift:=xlDown
+
+    ' Build an output array for the new rows.
+    ReDim outputArr(1 To numItems, 1 To numCols)
+
+    ' Loop through each sub item and fill the output array.
     For i = LBound(dataList) To UBound(dataList)
-         outCol = 1
+         Dim outRow As Long
+         outRow = i - LBound(dataList) + 1   ' Adjust the index to start at 1.
+         colIndex = 1
          For j = LBound(dataList(i)) To UBound(dataList(i))
-              ' Skip the Remarks column (6th element: index 5)
-              If j <> 5 Then
-                   ws.Cells(currentRow, outCol).Value = dataList(i)(j)
-                   outCol = outCol + 1
+              If j <> 5 Then ' Skip the Remarks column.
+                   outputArr(outRow, colIndex) = dataList(i)(j)
+                   colIndex = colIndex + 1
               End If
          Next j
-         currentRow = currentRow + 1
     Next i
+
+    ' Write the entire block to the inserted blank rows in one operation.
+    ws.Range(ws.Cells(startRow + 1, 1), ws.Cells(startRow + numItems, numCols)).Value = outputArr
+
+CleanUp:
+    ' Re-enable events, screen updating, and automatic calculation.
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
 End Sub
+
+
+
 
 '==============================================
 ' FindCell: Searches the used range for a cell containing searchText.
