@@ -1,19 +1,13 @@
 #If VBA7 Then
-    Private Declare PtrSafe Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" ( _
-        ByVal hwnd As LongPtr, _
-        ByVal lpOperation As String, _
-        ByVal lpFile As String, _
-        ByVal lpParameters As String, _
-        ByVal lpDirectory As String, _
-        ByVal nShowCmd As Long) As LongPtr
+    Private Declare PtrSafe Function ShellExecute Lib "shell32.dll" _
+        Alias "ShellExecuteA" (ByVal hwnd As LongPtr, ByVal lpOperation As String, _
+        ByVal lpFile As String, ByVal lpParameters As String, _
+        ByVal lpDirectory As String, ByVal nShowCmd As Long) As LongPtr
 #Else
-    Private Declare Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" ( _
-        ByVal hwnd As Long, _
-        ByVal lpOperation As String, _
-        ByVal lpFile As String, _
-        ByVal lpParameters As String, _
-        ByVal lpDirectory As String, _
-        ByVal nShowCmd As Long) As Long
+    Private Declare Function ShellExecute Lib "shell32.dll" _
+        Alias "ShellExecuteA" (ByVal hwnd As Long, ByVal lpOperation As String, _
+        ByVal lpFile As String, ByVal lpParameters As String, _
+        ByVal lpDirectory As String, ByVal nShowCmd As Long) As Long
 #End If
 
 Option Explicit
@@ -22,6 +16,7 @@ Option Explicit
 ' Main procedure: Reads inputs and generates the quotation.
 '==============================================
 Sub GenerateQuotation()
+    Dim masterFileName As String, genFileName As String
     Dim inputsPath As String
     Dim inputsWB As Workbook, masterWB As Workbook
     Dim genSheet As Worksheet, secSheet As Worksheet
@@ -34,6 +29,21 @@ Sub GenerateQuotation()
     Dim groupID As String
     Dim masterWS As Worksheet
 
+    ' Define file names
+    masterFileName = "master_quotation_format.xlsx"
+    genFileName = "Generated Quotation.xlsx"
+    
+    ' Check if either of the workbooks are open.
+    If IsWorkbookOpen(masterFileName) Then
+         MsgBox masterFileName & " is currently open and unsaved. Please save and close it before running the macro.", vbExclamation, "Workbook Open"
+         Exit Sub
+    End If
+    
+    If IsWorkbookOpen(genFileName) Then
+         MsgBox genFileName & " is currently open and unsaved. Please save and close it before running the macro.", vbExclamation, "Workbook Open"
+         Exit Sub
+    End If
+    
     '-------------------------------
     ' 1. Initialize dictionaries
     '-------------------------------
@@ -142,7 +152,7 @@ Sub GenerateQuotation()
          End If
     End If
     
-        ' 4b. Update F sections.
+    ' 4b. Update F sections.
     Dim fKey As Variant, sectionHeader As String
     For Each fKey In fSections.Keys
         Select Case UCase(fKey)
@@ -273,7 +283,7 @@ End Function
 
 '==============================================
 ' UpdateHeader: Scans the worksheet and updates any cell that starts with a key.
-' If the key (from General Inputs) was flagged for direct replacement, then the cell’s value is replaced entirely with the input value.
+' If the key (from General Inputs) was flagged for direct replacement, then the cellâ€™s value is replaced entirely with the input value.
 ' Otherwise, it updates the cell in the "key: value" format.
 '==============================================
 Sub UpdateHeader(ws As Worksheet, placeholders As Object)
@@ -391,10 +401,6 @@ CleanUp:
     Application.EnableEvents = True
 End Sub
 
-
-
-
-
 '==============================================
 ' FindCell: Searches the used range for a cell containing searchText.
 ' Returns an array {row, column}; if not found, returns {0,0}.
@@ -460,4 +466,14 @@ Sub InsertPhoto(ws As Worksheet, placeholderKey As String, photoPath As String)
     End With
 End Sub
 
-
+'==============================================
+' Helper function to check if a workbook is open.
+' Returns True if a workbook with the specified name is found in the Workbooks collection.
+'==============================================
+Function IsWorkbookOpen(wbName As String) As Boolean
+    Dim wb As Workbook
+    On Error Resume Next
+    Set wb = Workbooks(wbName)
+    On Error GoTo 0
+    IsWorkbookOpen = Not wb Is Nothing
+End Function
