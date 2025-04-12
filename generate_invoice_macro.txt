@@ -29,28 +29,12 @@ Sub GenerateInvoice()
 
     ' Initialize Word application
     Set wdApp = CreateObject("Word.Application")
-    
-    ' --- New Checks: Ensure the invoice-related documents are not already open ---
-    If IsDocOpen("master_invoice.docx", wdApp) Then
-        MsgBox "master_invoice.docx is currently open. Please close it before running the macro.", vbExclamation, "File Open"
-        wdApp.Quit
-        Set wdApp = Nothing
-        Exit Sub
-    End If
-
-    If IsDocOpen("Generated Invoice.docx", wdApp) Then
-        MsgBox "Generated Invoice.docx is currently open. Please close it before running the macro.", vbExclamation, "File Open"
-        wdApp.Quit
-        Set wdApp = Nothing
-        Exit Sub
-    End If
-    ' --- End of Checks ---
 
     wdApp.Visible = True
     Debug.Print "?? Word application started."
 
     ' Build the path to the template document (in subfolder "dev" of the Excel file's folder)
-    templatePath = ThisWorkbook.Path & "\dev do not edit\master_invoice.docx"
+    templatePath = ThisWorkbook.Path & "\dev(do not edit)\master_invoice.docx"
 
     ' Check that the master template exists
     If Dir(templatePath) = "" Then
@@ -170,18 +154,4 @@ ErrorHandler:
     Resume CleanExit
 End Sub
 
-'==============================================
-' Helper function: Checks if a Word document is open in the given Word application.
-' Returns True if a document with the given name is found in wdApp.Documents.
-'==============================================
-Function IsDocOpen(docName As String, wdApp As Object) As Boolean
-    Dim wdDoc As Object
-    On Error Resume Next
-    For Each wdDoc In wdApp.Documents
-        If LCase(wdDoc.Name) = LCase(docName) Then
-            IsDocOpen = True
-            Exit Function
-        End If
-    Next wdDoc
-    IsDocOpen = False
-End Function
+
