@@ -1,0 +1,71 @@
+Option Explicit
+
+Sub LoadReplaceAndRunVBAMacroFromTextFile()
+    ' Declaration of variables
+    Dim fso As Object, ts As Object
+    Dim vbaCode As String
+    Dim filePath As String
+    Dim vbProj As Object, vbComp As Object
+    Dim moduleName As String, subroutineName As String
+    Dim fileOpened As Boolean
+    
+    ' === CONFIGURATION ===
+    filePath = "C:\Users\stile\OneDrive\Desktop\GitHub\public_repos\DEV_local_generate_quotation_macro.text"
+    moduleName = "CloudMacro1BENQuo"
+    subroutineName = "GenerateQuotation"  ' Update if needed
+    
+    fileOpened = False
+    On Error GoTo ErrorHandler
+    
+    ' === Load file content ===
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FileExists(filePath) Then
+        MsgBox "File not found: " & filePath, vbExclamation
+        Exit Sub
+    End If
+    
+    Set ts = fso.OpenTextFile(filePath, 1) ' 1 = ForReading
+    fileOpened = True
+    vbaCode = ts.ReadAll
+    ts.Close
+    fileOpened = False
+    
+    ' === Ensure access to VBProject ===
+    ' Attempt to set vbProj; if inaccessible, prompt the user to check Trust settings.
+    On Error Resume Next
+    Set vbProj = ThisWorkbook.VBProject
+    If vbProj Is Nothing Then
+        MsgBox "Unable to access the VBProject. " & _
+               "Please enable 'Trust access to the VBA project object model' in Macro Settings.", vbExclamation
+        Exit Sub
+    End If
+    On Error GoTo ErrorHandler
+    
+    ' === Delete module if it exists ===
+    On Error Resume Next  ' Suppress error if module does not exist
+    Set vbComp = vbProj.VBComponents(moduleName)
+    If Not vbComp Is Nothing Then
+        vbProj.VBComponents.Remove vbComp
+    End If
+    On Error GoTo ErrorHandler
+    
+    ' === Add a new standard module and inject the code ===
+    Set vbComp = vbProj.VBComponents.Add(1)  ' 1 = Standard module
+    vbComp.Name = moduleName
+    vbComp.CodeModule.AddFromString vbaCode
+    
+    ' === Run the injected macro ===
+    Application.Run moduleName & "." & subroutineName
+    
+    MsgBox "Module injected and subroutine '" & subroutineName & "' executed!", vbInformation
+    Exit Sub
+
+ErrorHandler:
+    ' Clean up if the file is still open
+    If fileOpened And Not ts Is Nothing Then
+        ts.Close
+    End If
+    MsgBox "Error " & Err.Number & ": " & Err.Description, vbCritical
+End Sub
+
+

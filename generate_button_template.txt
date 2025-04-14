@@ -1,4 +1,4 @@
-Sub QuotationButton()
+Sub QuotationButtonTemplate()
     Dim ws As Worksheet
     Dim shp As Shape
     Dim btnExists As Boolean
