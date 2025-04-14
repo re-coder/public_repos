@@ -15,7 +15,8 @@ Sub InstallCloudAutomations()
     '   4. The procedure name to run (if flagged to run after installation)
     macroDefs = Array( _
         Array("CloudMacro1BENQuo", "https://raw.githubusercontent.com/re-coder/public_repos/refs/heads/main/generate_quotation_macro.txt", False, ""), _
-        Array("CloudMacro2BENQuoButt", "https://raw.githubusercontent.com/re-coder/public_repos/refs/heads/main/generate_quotation_button.txt", True, "QuotationButton") _
+        Array("CloudMacro3BENQuoButt", "https://raw.githubusercontent.com/re-coder/public_repos/refs/heads/main/generate_button_template.txt", True, "QuotationButton"), _
+        Array("CloudMacro2BENInv", "https://raw.githubusercontent.com/re-coder/public_repos/refs/heads/main/generate_invoice_macro.txt", False, "") _
     )
     
     ' Check if access to the VBA project is allowed.
