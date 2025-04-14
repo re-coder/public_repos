@@ -231,17 +231,42 @@ Sub GenerateQuotation()
               End If
          End If
     Next cell
+
+    ' ----- New Functionality: Rename output files based on the Quotation Number -----
+    Dim currentQuot As Long
+    If placeholders.Exists("Quotation Number") Then
+        currentQuot = CLng(placeholders("Quotation Number")(0))
+    Else
+        currentQuot = 1
+    End If
     
-    ' Save the updated master workbook
-    masterWB.SaveAs ThisWorkbook.Path & "\Generated Quotation.xlsx"
+    Dim newNameDoc As String, newNamePdf As String
+    newNameDoc = ThisWorkbook.Path & "\Quotation" & Format(currentQuot, "000") & ".docx"
+    newNamePdf = ThisWorkbook.Path & "\Quotation" & Format(currentQuot, "000") & ".pdf"
     
-    ' Export the master sheet as a PDF
-    masterWB.ExportAsFixedFormat Type:=xlTypePDF, Filename:=ThisWorkbook.Path & "\Generated Quotation.pdf"
+    masterWB.SaveAs newNameDoc
+    masterWB.ExportAsFixedFormat Type:=xlTypePDF, Filename:=newNamePdf
+    ' ----- End New Functionality -----
     
+    ' ----- Now update the Quotation Number in the inputs file -----
+    Dim updatedWB As Workbook
+    Dim genInputsSheet As Worksheet
+    Set updatedWB = Workbooks.Open(ThisWorkbook.Path & "\quotation_inputs.xlsx")
+    Set genInputsSheet = updatedWB.Sheets("General Inputs")
+    Dim j As Long
+    For j = 3 To genInputsSheet.Cells(genInputsSheet.Rows.Count, "B").End(xlUp).Row
+         If Trim(genInputsSheet.Cells(j, "B").Value) = "Quotation Number" Then
+              genInputsSheet.Cells(j, "C").Value = currentQuot + 1
+              Exit For
+         End If
+    Next j
+    updatedWB.Save
+    updatedWB.Close False
+    ' ----- End update -----
+
     ' Automatically open the generated PDF based on operating system:
     Dim pdfPath As String
-    pdfPath = ThisWorkbook.Path & IIf(InStr(1, Application.OperatingSystem, "Mac", vbTextCompare) > 0, "/Generated Quotation.pdf", "\Generated Quotation.pdf")
-    
+    pdfPath = newNamePdf   ' Use the new name
     If InStr(1, Application.OperatingSystem, "Mac", vbTextCompare) > 0 Then
         ' On Mac, use AppleScript (MacScript) to open the PDF with Finder.
         Dim script As String
@@ -254,7 +279,14 @@ Sub GenerateQuotation()
 
     masterWB.Close False
     
-    MsgBox "Generated Quotation.xlsx and Generated Quotation.pdf created successfully!", vbInformation, "Quotation Generation"
+Dim fileNameDoc As String, fileNamePdf As String
+fileNameDoc = Mid(newNameDoc, InStrRev(newNameDoc, "\") + 1)
+fileNamePdf = Mid(newNamePdf, InStrRev(newNamePdf, "\") + 1)
+
+MsgBox "Quotation generated and saved as:" & vbCrLf & _
+       "Word: " & fileNameDoc & vbCrLf & "PDF: " & fileNamePdf, vbInformation, "Quotation Generation"
+
+
 End Sub
 
 '==============================================
@@ -283,7 +315,7 @@ End Function
 
 '==============================================
 ' UpdateHeader: Scans the worksheet and updates any cell that starts with a key.
-' If the key (from General Inputs) was flagged for direct replacement, then the cellÃ¢â‚¬â„¢s value is replaced entirely with the input value.
+' If the key (from General Inputs) was flagged for direct replacement, then the cell’s value is replaced entirely with the input value.
 ' Otherwise, it updates the cell in the "key: value" format.
 '==============================================
 Sub UpdateHeader(ws As Worksheet, placeholders As Object)
