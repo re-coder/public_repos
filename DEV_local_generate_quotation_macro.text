@@ -283,7 +283,7 @@ End Function
 
 '==============================================
 ' UpdateHeader: Scans the worksheet and updates any cell that starts with a key.
-' If the key (from General Inputs) was flagged for direct replacement, then the cellâ€™s value is replaced entirely with the input value.
+' If the key (from General Inputs) was flagged for direct replacement, then the cellÃ¢â‚¬â„¢s value is replaced entirely with the input value.
 ' Otherwise, it updates the cell in the "key: value" format.
 '==============================================
 Sub UpdateHeader(ws As Worksheet, placeholders As Object)
