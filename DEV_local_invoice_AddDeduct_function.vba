@@ -1,27 +1,41 @@
 Option Explicit
 
-Sub PopulateInvoiceTables_NewDoc()
-    Dim ws              As Worksheet
-    Dim lastRow         As Long
-    Dim addStart As Long, addEnd As Long
-    Dim dedStart As Long, dedEnd As Long
-    Dim i               As Long, cnt As Long
-    Dim addFlag As String, dedFlag As String
+Public Sub InsertInvoiceAddDeductSections( _
+    ByVal newDoc As Object, _
+    ByVal dataFilePath As String, _
+    ByVal sheetName As String _
+)
+    Const wdBorderBottom             As Long = 4
+    Const wdPreferredWidthPercent    As Long = 2
+    Const wdFindStop                 As Long = 0
+    Const wdUnderlineSingle          As Long = 1
     
-    '— 1) Locate blocks on “inputs” sheet
-    Set ws = ThisWorkbook.Sheets("inputs")
+    Dim wb         As Workbook
+    Dim ws         As Worksheet
+    Dim lastRow    As Long
+    Dim i          As Long, cnt As Long
+    Dim addStart   As Long, addEnd   As Long
+    Dim dedStart   As Long, dedEnd   As Long
+    Dim addFlag    As String, dedFlag    As String
+    Dim addItems() As String, addPrices() As String
+    Dim dedItems() As String, dedPrices() As String
+    
+    On Error GoTo CleanExit
+    
+    ' 1) Open data workbook & sheet
+    Set wb = Workbooks.Open(Filename:=dataFilePath, ReadOnly:=True)
+    Set ws = wb.Worksheets(sheetName)
     lastRow = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
     
+    ' 2) Find the start/end rows + YES/NO flags
     For i = 1 To lastRow
         Select Case UCase(Trim(ws.Cells(i, "B").Value))
           Case "ADDITIONAL", "ADDITIONAL ITEMS"
-            addStart = i
-            addFlag = UCase(Trim(ws.Cells(i, "C").Text))   ' YES/NO flag
+            addStart = i: addFlag = UCase(ws.Cells(i, "C").Text)
           Case "ADDITION SUBTOTAL:"
             If addStart > 0 Then addEnd = i
           Case "DEDUCT", "DEDUCTION ITEMS"
-            dedStart = i
-            dedFlag = UCase(Trim(ws.Cells(i, "C").Text))
+            dedStart = i: dedFlag = UCase(ws.Cells(i, "C").Text)
           Case "DEDUCTION SUBTOTAL:"
             If dedStart > 0 Then dedEnd = i
         End Select
@@ -29,23 +43,19 @@ Sub PopulateInvoiceTables_NewDoc()
     
     If addStart = 0 Or addEnd < addStart _
       Or dedStart = 0 Or dedEnd < dedStart Then
-        MsgBox "Could not locate all sections in 'inputs'!", vbExclamation
-        Exit Sub
+        Err.Raise vbObjectError + 1, , "Section markers not found."
     End If
     
-    '— 2) Pull non-blank rows into arrays
-    Dim addItems()  As String, addPrices()  As String
-    Dim dedItems()  As String, dedPrices()  As String
-    
+    ' 3) Load non-blank rows into arrays
     If addFlag = "YES" Then
       cnt = 0
       For i = addStart To addEnd
-        If Trim(ws.Cells(i, "B").Value) <> "" Then cnt = cnt + 1
+        If Len(Trim(ws.Cells(i, "B").Value)) > 0 Then cnt = cnt + 1
       Next i
       ReDim addItems(1 To cnt), addPrices(1 To cnt)
       cnt = 0
       For i = addStart To addEnd
-        If Trim(ws.Cells(i, "B").Value) <> "" Then
+        If Len(Trim(ws.Cells(i, "B").Value)) > 0 Then
           cnt = cnt + 1
           addItems(cnt) = ws.Cells(i, "B").Text
           addPrices(cnt) = ws.Cells(i, "C").Text
@@ -53,15 +63,15 @@ Sub PopulateInvoiceTables_NewDoc()
       Next i
     End If
     
+    cnt = 0
     If dedFlag = "YES" Then
-      cnt = 0
       For i = dedStart To dedEnd
-        If Trim(ws.Cells(i, "B").Value) <> "" Then cnt = cnt + 1
+        If Len(Trim(ws.Cells(i, "B").Value)) > 0 Then cnt = cnt + 1
       Next i
       ReDim dedItems(1 To cnt), dedPrices(1 To cnt)
       cnt = 0
       For i = dedStart To dedEnd
-        If Trim(ws.Cells(i, "B").Value) <> "" Then
+        If Len(Trim(ws.Cells(i, "B").Value)) > 0 Then
           cnt = cnt + 1
           dedItems(cnt) = ws.Cells(i, "B").Text
           dedPrices(cnt) = ws.Cells(i, "C").Text
@@ -69,23 +79,18 @@ Sub PopulateInvoiceTables_NewDoc()
       Next i
     End If
     
-    '— 3) Launch Word & new doc from template
-    Dim wdApp    As Object, wdDoc As Object, fnd As Object
-    Dim rng      As Object, tbl As Object, b As Object, cel As Object
+    ' 4) Prepare a clean Word.Find
+    Dim fnd As Object
+    Set fnd = newDoc.Content.Find
+    With fnd
+      .ClearFormatting
+      .Replacement.ClearFormatting
+      .Wrap = wdFindStop
+      .Forward = True
+    End With
     
-    Set wdApp = CreateObject("Word.Application")
-    wdApp.Visible = True
-    Set wdDoc = wdApp.Documents.Add( _
-      Template:=ThisWorkbook.Path & "\dev(do not edit)\master_invoice.docx", _
-      NewTemplate:=False _
-    )
-    Set fnd = wdDoc.Content.Find
-    
-    '— 4) Insert tables
+    ' 5) Insert each table at its placeholder
     Dim placeholder As Variant
-    Dim itemsArr   As Variant, pricesArr As Variant
-    Dim rowCount   As Long
-    
     For Each placeholder In Array( _
         "[[INSERT_ADDITION_TABLE_HERE]]", _
         "[[INSERT_DEDUCTION_TABLE_HERE]]" _
@@ -93,45 +98,51 @@ Sub PopulateInvoiceTables_NewDoc()
       
       With fnd
         .Text = placeholder
-        .MatchCase = True
         If .Execute Then
-          Set rng = wdDoc.Range(.Parent.Start, .Parent.End)
+          Dim rng As Object
+          Set rng = newDoc.Range(.Parent.Start, .Parent.End)
           rng.Text = ""
           
-          ' choose block
-          If placeholder Like "*ADDITION*" Then
-            If addFlag <> "YES" Then GoTo SkipTable
+          Dim itemsArr As Variant, pricesArr As Variant
+          If InStr(placeholder, "ADDITION") > 0 Then
+            If addFlag <> "YES" Then GoTo SkipTbl
             itemsArr = addItems:   pricesArr = addPrices
           Else
-            If dedFlag <> "YES" Then GoTo SkipTable
+            If dedFlag <> "YES" Then GoTo SkipTbl
             itemsArr = dedItems:   pricesArr = dedPrices
           End If
+          
+          Dim rowCount As Long
           rowCount = UBound(itemsArr)
           
-          ' add table
-          Set tbl = wdDoc.Tables.Add( _
-            Range:=rng, NumRows:=rowCount, NumColumns:=2 _
-          )
-          ' 60% width & no borders
-          tbl.PreferredWidthType = 2: tbl.PreferredWidth = 60
+          ' Build a 2-column, 60%-wide, borderless table
+          Dim tbl As Object, b As Object, cel As Object
+          Set tbl = newDoc.Tables.Add(rng, rowCount, 2)
+          tbl.PreferredWidthType = wdPreferredWidthPercent
+          tbl.PreferredWidth = 60
           For Each b In tbl.Borders: b.LineStyle = 0: Next b
           
-          ' underline header cell only
-          tbl.Cell(1, 1).Borders(4).LineStyle = 1
+          ' Underline header bottom
+          tbl.cell(1, 1).Borders(wdBorderBottom).LineStyle = 1
           
-          ' fill rows & clear YES/NO
+          ' Fill and style
           Dim r As Long
           For r = 1 To rowCount
-            tbl.Cell(r, 1).Range.Text = itemsArr(r)
-            tbl.Cell(r, 2).Range.Text = IIf(r = 1, "", pricesArr(r))
+            tbl.cell(r, 1).Range.Text = itemsArr(r)
+            tbl.cell(r, 2).Range.Text = pricesArr(r)
           Next r
           
-          ' bold & underline header word
-          With tbl.Cell(1, 1).Range.Font: .Bold = True: .Underline = 1: End With
-          ' bold subtotal row
-          With tbl.Rows(rowCount).Range.Font: .Bold = True: End With
+          ' Header word bold + single-underline
+          With tbl.cell(1, 1).Range.Font
+            .Bold = True
+            .Underline = wdUnderlineSingle
+          End With
+          ' Subtotal row bold
+          With tbl.Rows(rowCount).Range.Font
+            .Bold = True
+          End With
           
-          ' align & ensure no cell borders in col 2
+          ' Align: left column left, right column right, and remove any col-2 borders
           For Each cel In tbl.Columns(1).Cells
             cel.Range.ParagraphFormat.Alignment = 0
           Next cel
@@ -141,19 +152,12 @@ Sub PopulateInvoiceTables_NewDoc()
           Next cel
         End If
       End With
-SkipTable:
+SkipTbl:
     Next placeholder
-    
-    '— 5) Save new file
-    Dim outPath As String
-    outPath = ThisWorkbook.Path & "\generated_invoice.docx"
-    wdDoc.SaveAs2 Filename:=outPath
-    wdDoc.Close False
-    wdApp.Quit
-    
-    Set wdDoc = Nothing: Set wdApp = Nothing
-    
-    MsgBox "New invoice created:" & vbCrLf & outPath, vbInformation
+
+CleanExit:
+    On Error Resume Next
+    wb.Close False
 End Sub
 
 
