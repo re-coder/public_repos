@@ -16,13 +16,13 @@ Sub PopulateInvoiceTables_NewDoc()
         Select Case UCase(Trim(ws.Cells(i, "B").Value))
           Case "ADDITIONAL", "ADDITIONAL ITEMS"
             addStart = i
-            addFlag  = UCase(Trim(ws.Cells(i, "C").Text))  ' YES/NO flag
-          Case "ADDITION SUBTOTAL"
+            addFlag = UCase(Trim(ws.Cells(i, "C").Text))   ' YES/NO flag
+          Case "ADDITION SUBTOTAL:"
             If addStart > 0 Then addEnd = i
           Case "DEDUCT", "DEDUCTION ITEMS"
             dedStart = i
-            dedFlag  = UCase(Trim(ws.Cells(i, "C").Text))
-          Case "DEDUCTION SUBTOTAL"
+            dedFlag = UCase(Trim(ws.Cells(i, "C").Text))
+          Case "DEDUCTION SUBTOTAL:"
             If dedStart > 0 Then dedEnd = i
         End Select
     Next i
@@ -33,7 +33,7 @@ Sub PopulateInvoiceTables_NewDoc()
         Exit Sub
     End If
     
-    '— 2) Extract non‑blank rows into arrays
+    '— 2) Pull non-blank rows into arrays
     Dim addItems()  As String, addPrices()  As String
     Dim dedItems()  As String, dedPrices()  As String
     
@@ -48,7 +48,7 @@ Sub PopulateInvoiceTables_NewDoc()
         If Trim(ws.Cells(i, "B").Value) <> "" Then
           cnt = cnt + 1
           addItems(cnt) = ws.Cells(i, "B").Text
-          addPrices(cnt)= ws.Cells(i, "C").Text
+          addPrices(cnt) = ws.Cells(i, "C").Text
         End If
       Next i
     End If
@@ -64,12 +64,12 @@ Sub PopulateInvoiceTables_NewDoc()
         If Trim(ws.Cells(i, "B").Value) <> "" Then
           cnt = cnt + 1
           dedItems(cnt) = ws.Cells(i, "B").Text
-          dedPrices(cnt)= ws.Cells(i, "C").Text
+          dedPrices(cnt) = ws.Cells(i, "C").Text
         End If
       Next i
     End If
     
-    '— 3) Launch Word and create new doc from template
+    '— 3) Launch Word & new doc from template
     Dim wdApp    As Object, wdDoc As Object, fnd As Object
     Dim rng      As Object, tbl As Object, b As Object, cel As Object
     
@@ -81,7 +81,7 @@ Sub PopulateInvoiceTables_NewDoc()
     )
     Set fnd = wdDoc.Content.Find
     
-    '— 4) Insert each table if its flag = YES
+    '— 4) Insert tables
     Dim placeholder As Variant
     Dim itemsArr   As Variant, pricesArr As Variant
     Dim rowCount   As Long
@@ -90,6 +90,7 @@ Sub PopulateInvoiceTables_NewDoc()
         "[[INSERT_ADDITION_TABLE_HERE]]", _
         "[[INSERT_DEDUCTION_TABLE_HERE]]" _
       )
+      
       With fnd
         .Text = placeholder
         .MatchCase = True
@@ -97,52 +98,56 @@ Sub PopulateInvoiceTables_NewDoc()
           Set rng = wdDoc.Range(.Parent.Start, .Parent.End)
           rng.Text = ""
           
+          ' choose block
           If placeholder Like "*ADDITION*" Then
             If addFlag <> "YES" Then GoTo SkipTable
-            itemsArr  = addItems
-            pricesArr = addPrices
+            itemsArr = addItems:   pricesArr = addPrices
           Else
             If dedFlag <> "YES" Then GoTo SkipTable
-            itemsArr  = dedItems
-            pricesArr = dedPrices
+            itemsArr = dedItems:   pricesArr = dedPrices
           End If
           rowCount = UBound(itemsArr)
           
-          ' build the table
+          ' add table
           Set tbl = wdDoc.Tables.Add( _
             Range:=rng, NumRows:=rowCount, NumColumns:=2 _
           )
+          ' 60% width & no borders
           tbl.PreferredWidthType = 2: tbl.PreferredWidth = 60
           For Each b In tbl.Borders: b.LineStyle = 0: Next b
-          tbl.Rows(1).Borders(4).LineStyle = 1
           
-          ' fill cells
+          ' underline header cell only
+          tbl.Cell(1, 1).Borders(4).LineStyle = 1
+          
+          ' fill rows & clear YES/NO
           Dim r As Long
           For r = 1 To rowCount
             tbl.Cell(r, 1).Range.Text = itemsArr(r)
-            tbl.Cell(r, 2).Range.Text = pricesArr(r)
+            tbl.Cell(r, 2).Range.Text = IIf(r = 1, "", pricesArr(r))
           Next r
           
-          ' style header and subtotal row
+          ' bold & underline header word
           With tbl.Cell(1, 1).Range.Font: .Bold = True: .Underline = 1: End With
+          ' bold subtotal row
           With tbl.Rows(rowCount).Range.Font: .Bold = True: End With
           
-          ' align
+          ' align & ensure no cell borders in col 2
           For Each cel In tbl.Columns(1).Cells
             cel.Range.ParagraphFormat.Alignment = 0
           Next cel
           For Each cel In tbl.Columns(2).Cells
             cel.Range.ParagraphFormat.Alignment = 2
+            For Each b In cel.Borders: b.LineStyle = 0: Next b
           Next cel
         End If
       End With
 SkipTable:
     Next placeholder
     
-    '— 5) Save and clean up
+    '— 5) Save new file
     Dim outPath As String
     outPath = ThisWorkbook.Path & "\generated_invoice.docx"
-    wdDoc.SaveAs2 FileName:=outPath
+    wdDoc.SaveAs2 Filename:=outPath
     wdDoc.Close False
     wdApp.Quit
     
@@ -150,3 +155,5 @@ SkipTable:
     
     MsgBox "New invoice created:" & vbCrLf & outPath, vbInformation
 End Sub
+
+
