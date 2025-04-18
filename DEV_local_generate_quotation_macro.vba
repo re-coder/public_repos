@@ -102,6 +102,9 @@ Sub GenerateQuotation()
     Set sectionsGroup1 = CreateObject("Scripting.Dictionary")
     Set sectionsGroup2 = CreateObject("Scripting.Dictionary")
     Set secSheet = inputsWB.Sheets("Section Inputs")
+
+    Debug.Print "Applying currency format to Section Inputs sheet..."
+    ApplyCurrencyFormat secSheet, currencyCode
     
     ' --- Group 1 ---
     Dim hdrLast1 As Long, dataLast1 As Long
@@ -126,12 +129,14 @@ Sub GenerateQuotation()
             Set dataRows = New Collection
             Debug.Print "   collecting data from row " & rowIndex
             Do While rowIndex <= lastRowGroup1 And Trim(secSheet.Cells(rowIndex, "B").Value) = ""
+                ' **UPDATED** include new Qty‑Unit column H:
                 rowData = Array( _
                   secSheet.Cells(rowIndex, "C").Value, _
                   secSheet.Cells(rowIndex, "D").Value, _
                   secSheet.Cells(rowIndex, "E").Value, _
                   secSheet.Cells(rowIndex, "F").Value, _
-                  secSheet.Cells(rowIndex, "G").Value)
+                  secSheet.Cells(rowIndex, "G").Value, _
+                  secSheet.Cells(rowIndex, "H").Value)
                 If Not IsAllEmpty(rowData) Then
                     dataRows.Add rowData
                     Debug.Print "    Added row@" & rowIndex & ": [" & Join(rowData, ", ") & "]"
@@ -179,12 +184,15 @@ Sub GenerateQuotation()
             Set dataRows = New Collection
             Debug.Print "   collecting data from row " & rowIndex
             Do While rowIndex <= lastRowGroup2 And Trim(secSheet.Cells(rowIndex, "K").Value) = ""
+                ' **UPDATED** include new Qty‑Unit columns Q and R:
                 rowData = Array( _
                   secSheet.Cells(rowIndex, "L").Value, _
                   secSheet.Cells(rowIndex, "M").Value, _
                   secSheet.Cells(rowIndex, "N").Value, _
                   secSheet.Cells(rowIndex, "O").Value, _
-                  secSheet.Cells(rowIndex, "P").Value)
+                  secSheet.Cells(rowIndex, "P").Value, _
+                  secSheet.Cells(rowIndex, "Q").Value, _
+                  secSheet.Cells(rowIndex, "R").Value)
                 If Not IsAllEmpty(rowData) Then
                     dataRows.Add rowData
                     Debug.Print "    Added row@" & rowIndex & ": [" & Join(rowData, ", ") & "]"
@@ -364,3 +372,17 @@ ErrorHandler:
     MsgBox "Error " & Err.Number & ": " & Err.Description, vbCritical
     Resume CleanExit
 End Sub
+
+'----------------------------------------------
+' Helper: Returns True if every element of arr is blank
+'----------------------------------------------
+Private Function IsAllEmpty(arr As Variant) As Boolean
+    Dim i As Long
+    For i = LBound(arr) To UBound(arr)
+        If Trim(CStr(arr(i))) <> "" Then
+            IsAllEmpty = False
+            Exit Function
+        End If
+    Next i
+    IsAllEmpty = True
+End Function
