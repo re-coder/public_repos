@@ -42,7 +42,7 @@ Sub GenerateQuotation()
     
     ' 0) Check that template and prior output are closed
     masterFileName = "master_quotation_format.xlsx"
-    genFileName    = "Generated Quotation.xlsx"
+    genFileName = "Generated Quotation.xlsx"
     Debug.Print "Checking open books..."
     If IsWorkbookOpen(masterFileName) Then
         Debug.Print "ERROR: Template is open."
@@ -102,13 +102,10 @@ Sub GenerateQuotation()
     Set sectionsGroup1 = CreateObject("Scripting.Dictionary")
     Set sectionsGroup2 = CreateObject("Scripting.Dictionary")
     Set secSheet = inputsWB.Sheets("Section Inputs")
-
-    Debug.Print "Applying currency format to Section Inputs sheet..."
-    ApplyCurrencyFormat secSheet, currencyCode
     
     ' --- Group 1 ---
     Dim hdrLast1 As Long, dataLast1 As Long
-    hdrLast1  = secSheet.Cells(secSheet.Rows.Count, "B").End(xlUp).Row
+    hdrLast1 = secSheet.Cells(secSheet.Rows.Count, "B").End(xlUp).Row
     dataLast1 = secSheet.Cells(secSheet.Rows.Count, "C").End(xlUp).Row
     lastRowGroup1 = Application.Max(hdrLast1, dataLast1)
     Debug.Print " Group1 last row: " & lastRowGroup1
@@ -129,7 +126,7 @@ Sub GenerateQuotation()
             Set dataRows = New Collection
             Debug.Print "   collecting data from row " & rowIndex
             Do While rowIndex <= lastRowGroup1 And Trim(secSheet.Cells(rowIndex, "B").Value) = ""
-                ' **UPDATED** include new Qty‑Unit column H:
+                ' **UPDATED** include new Qty-Unit column H:
                 rowData = Array( _
                   secSheet.Cells(rowIndex, "C").Value, _
                   secSheet.Cells(rowIndex, "D").Value, _
@@ -163,13 +160,14 @@ Sub GenerateQuotation()
     
     ' --- Group 2 ---
     Dim hdrLast2 As Long, dataLast2 As Long
-    hdrLast2  = secSheet.Cells(secSheet.Rows.Count, "K").End(xlUp).Row
-    dataLast2 = secSheet.Cells(secSheet.Rows.Count, "L").End(xlUp).Row
+    hdrLast2 = secSheet.Cells(secSheet.Rows.Count, "L").End(xlUp).Row
+    dataLast2 = secSheet.Cells(secSheet.Rows.Count, "R").End(xlUp).Row   ' <-- use R, not L
     lastRowGroup2 = Application.Max(hdrLast2, dataLast2)
+
     Debug.Print " Group2 last row: " & lastRowGroup2
     rowIndex = 1
     Do While rowIndex <= lastRowGroup2
-        cellVal = Trim(secSheet.Cells(rowIndex, "K").Value)
+        cellVal = Trim(secSheet.Cells(rowIndex, "L").Value)
         If cellVal <> "" And LCase(cellVal) <> "section item" Then
             currentHeader = cellVal
             Debug.Print "  G2 header @" & rowIndex & ": " & currentHeader
@@ -183,10 +181,9 @@ Sub GenerateQuotation()
             
             Set dataRows = New Collection
             Debug.Print "   collecting data from row " & rowIndex
-            Do While rowIndex <= lastRowGroup2 And Trim(secSheet.Cells(rowIndex, "K").Value) = ""
-                ' **UPDATED** include new Qty‑Unit columns Q and R:
+            Do While rowIndex <= lastRowGroup2 And Trim(secSheet.Cells(rowIndex, "L").Value) = ""
+                ' **UPDATED** include new Qty-Unit columns Q and R:
                 rowData = Array( _
-                  secSheet.Cells(rowIndex, "L").Value, _
                   secSheet.Cells(rowIndex, "M").Value, _
                   secSheet.Cells(rowIndex, "N").Value, _
                   secSheet.Cells(rowIndex, "O").Value, _
@@ -319,9 +316,9 @@ Sub GenerateQuotation()
     Else
         currentQuot = 1
     End If
-    newNameDoc = ThisWorkbook.Path & "\Quotation" & Format(currentQuot, "000") & ".docx"
+    newNameDoc = ThisWorkbook.Path & "\Quotation" & Format(currentQuot, "000") & ".xlsx"
     newNamePdf = ThisWorkbook.Path & "\Quotation" & Format(currentQuot, "000") & ".pdf"
-    Debug.Print " Saving DOCX: " & newNameDoc
+    Debug.Print " Saving XLSX: " & newNameDoc
     masterWB.SaveAs newNameDoc
     Debug.Print " Exporting PDF: " & newNamePdf
     masterWB.ExportAsFixedFormat Type:=xlTypePDF, Filename:=newNamePdf
@@ -362,9 +359,9 @@ Sub GenerateQuotation()
 CleanExit:
     On Error Resume Next
     If Not inputsWB Is Nothing Then inputsWB.Close False
-    Set placeholders      = Nothing
-    Set sectionsGroup1    = Nothing
-    Set sectionsGroup2    = Nothing
+    Set placeholders = Nothing
+    Set sectionsGroup1 = Nothing
+    Set sectionsGroup2 = Nothing
     Exit Sub
 
 ErrorHandler:
@@ -386,3 +383,5 @@ Private Function IsAllEmpty(arr As Variant) As Boolean
     Next i
     IsAllEmpty = True
 End Function
+
+
