@@ -242,6 +242,17 @@ Sub GenerateQuotation()
             Debug.Print " Photo inserted."
         End If
     End If
+
+    ' 4b‑2) Photo2
+    If placeholders.Exists("<<Photo2>>") Then
+        photoName = placeholders("<<Photo2>>")(0)
+        photoPath = ThisWorkbook.Path & "\photos\" & photoName
+        Debug.Print "Inserting photo2 '" & photoName & "'..."
+        If Dir(photoPath) <> "" Then
+            InsertPhoto masterWS, "<<Photo2>>", photoPath
+            Debug.Print " Photo2 inserted."
+        End If
+    End If
     
     ' 4c) Write all sections
     Debug.Print "Writing Group1 sections..."
