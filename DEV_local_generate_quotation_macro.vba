@@ -37,6 +37,10 @@ Sub GenerateQuotation()
     Dim skipRows As Long
     Dim currencyCode As String
     Dim resp As VbMsgBoxResult
+    Dim historyFolder As String, archiveName As String
+
+
+'----------------------------------------------'----------------------------------------------'----------------------------------------------'----------------------------------------------
 
     Debug.Print "=== GenerateQuotation START ==="
     
@@ -336,7 +340,19 @@ Sub GenerateQuotation()
     Next k
     updatedWB.Save
     updatedWB.Close False
-    
+
+    ' 6a) Archive the inputs workbook with date & time —
+    ' ————————————————
+
+    historyFolder = ThisWorkbook.Path & "\Quotation Inputs History"
+    If Dir(historyFolder, vbDirectory) = "" Then MkDir historyFolder
+    archiveName = historyFolder _
+        & "\quotation_inputs_" _
+        & Format(Now, "yyyy-mm-dd_HHMMSS") _
+        & ".xlsx"
+    FileCopy inputsPath, archiveName
+    Debug.Print "Archived inputs to " & archiveName
+
     ' 7) Open the PDF
     Debug.Print "Opening PDF..."
     finalPdfPath = newNamePdf
